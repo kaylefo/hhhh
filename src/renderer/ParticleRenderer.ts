@@ -1,5 +1,6 @@
 import { Container, Graphics } from 'pixi.js';
 import { PLACEMENT_ANIMATION_MS } from '@/game/constants';
+import { randomUnit } from '@/game/random';
 
 const MAX_PARTICLES = 40;
 
@@ -45,15 +46,15 @@ export class ParticleRenderer {
     for (let i = 0; i < spawn; i++) {
       const particle = this.pool.pop();
       if (!particle) break;
-      const angle = (Math.PI * 2 * i) / spawn + Math.random() * 0.4;
-      const speed = 40 + Math.random() * 90;
+      const angle = (Math.PI * 2 * i) / spawn + randomUnit() * 0.4;
+      const speed = 40 + randomUnit() * 90;
       particle.x = x;
       particle.y = y;
       particle.vx = Math.cos(angle) * speed;
       particle.vy = Math.sin(angle) * speed - 20;
-      particle.maxLife = PLACEMENT_ANIMATION_MS * (0.7 + Math.random() * 0.5);
+      particle.maxLife = PLACEMENT_ANIMATION_MS * (0.7 + randomUnit() * 0.5);
       particle.life = particle.maxLife;
-      particle.radius = 2 + Math.random() * 3;
+      particle.radius = 2 + randomUnit() * 3;
       particle.color = color;
       particle.g.visible = true;
       particle.g.clear();

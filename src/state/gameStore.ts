@@ -43,11 +43,14 @@ import {
   saveSettings,
   loadMeta,
   saveMeta,
-  loadAllTiles,
+  loadTilesNearCamera,
+  loadRemainingTiles,
   loadDiscoveries,
   loadExactPages,
   loadRgbBitset,
   loadUndo,
+  loadSession,
+  saveSession,
   saveUndo,
   persistPlacementAtomic,
   persistUndoAtomic,
@@ -149,6 +152,8 @@ export type BoardRendererBridge = {
   }) => Promise<Blob>;
     spawnPlacementParticles: (q: number, r: number, color: number) => void;
   animatePlacement: (q: number, r: number, color: number, fromScreen?: { x: number; y: number }) => void;
+  revealTileIfNeeded: (q: number, r: number) => void;
+  fitAllTiles: (tiles: Iterable<TileRecord>, animated?: boolean) => void;
 };
 
 export type ImportPreview = {
@@ -162,6 +167,27 @@ export type ImportPreview = {
 let undoTimer: number | null = null;
 let cameraDebounceTimer: number | null = null;
 let playTimeInterval: number | null = null;
+let lastPlayTickAt = Date.now();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let getStore: (() => any) | null = null;
+
+function creditPlayTime(): void {
+  if (!getStore) return;
+  const { meta: m } = getStore();
+  if (!m) return;
+  const now = Date.now();
+  const elapsed = Math.max(0, now - lastPlayTickAt);
+  lastPlayTickAt = now;
+  if (elapsed > 0) {
+    m.statistics.totalPlayTimeMs += elapsed;
+  }
+  void saveMeta(m);
+  void saveSession({
+    lastVisibleAt: now,
+    lastPlayTickAt: now,
+    appVersion: 1,
+  });
+}
 
 function createNewWorld(): WorldMeta {
   const baseHue = generateBaseHue();
@@ -324,11 +350,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const rgbData = await loadRgbBitset();
       if (rgbData) rgbBitset.loadData(rgbData, meta.statistics.rgbCells);
 
-      const tiles = await loadAllTiles(meta.worldId);
+      const tiles = await loadTilesNearCamera(meta.worldId, meta.camera);
       const discoveriesMap = await loadDiscoveries();
       const discoveries = Array.from(discoveriesMap.values());
       const frontier = new FrontierSet(meta.frontier);
       const undoSnapshot = await loadUndo();
+      const session = await loadSession();
+      lastPlayTickAt = session?.lastPlayTickAt ?? Date.now();
 
       const pendingRoll = meta.pendingRoll;
       let interactionState: InteractionState = 'idle';
@@ -355,19 +383,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
         undoSnapshot,
       });
 
+      getStore = () => get();
+
+      // Continue loading remaining tiles in background after first paint
+      void loadRemainingTiles(meta.worldId, tiles).then((allTiles) => {
+        if (allTiles.size > get().tiles.size) {
+          set({ tiles: allTiles });
+        }
+      });
+
       if (playTimeInterval) clearInterval(playTimeInterval);
       playTimeInterval = window.setInterval(() => {
-        const { meta: m } = get();
-        if (m && document.visibilityState === 'visible') {
-          m.statistics.totalPlayTimeMs += 30000;
-          void saveMeta(m);
+        if (document.visibilityState === 'visible') {
+          creditPlayTime();
         }
       }, 30000);
 
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') {
-          const { meta: m } = get();
-          if (m) void saveMeta(m);
+          creditPlayTime();
+        } else {
+          lastPlayTickAt = Date.now();
         }
       });
     } catch (err) {
@@ -562,7 +598,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (renderer) {
         renderer.animatePlacement(q, r, recipe.packedColor);
         renderer.spawnPlacementParticles(q, r, recipe.packedColor);
-        renderer.centerOn(q, r, true);
+        renderer.revealTileIfNeeded(q, r);
         renderer.highlightTile(q, r, 1200);
       }
 

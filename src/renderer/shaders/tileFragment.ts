@@ -83,10 +83,28 @@ vec3 applyPrism(vec3 rgb, vec2 local, float time) {
 
 vec3 colorPatternOverlay(vec3 rgb, vec2 local, float pattern, float enabled) {
     if (enabled < 0.5) return rgb;
-    float stripe = sin((local.x + local.y) * 8.0 + pattern * 12.0);
-    float dots = step(0.82, hash21(floor(local * 5.0 + pattern)));
-    float overlay = mix(stripe * 0.04, dots * 0.08, 0.35);
-    return rgb + overlay;
+
+    // Reconstruct approximate OKLCH from interpolated OKLab for pattern cues
+    float C = length(vOklab.yz);
+    float hue = atan(vOklab.z, vOklab.y);
+    float L = clamp(vOklab.x, 0.0, 1.0);
+
+    if (C < 0.03) {
+        float spacing = mix(7.0, 4.5, 1.0 - L);
+        float dots = step(0.78, hash21(floor(local * spacing + pattern * 3.0)));
+        float opacity = mix(0.08, 0.16, 1.0 - L);
+        return mix(rgb, vec3(1.0) - rgb, dots * opacity);
+    }
+
+    float angle = hue * 0.5;
+    float ca = cos(angle);
+    float sa = sin(angle);
+    float projected = local.x * ca + local.y * sa;
+    float thickness = mix(10.0, 6.0, clamp(C / 0.25, 0.0, 1.0));
+    float line = abs(fract(projected * thickness + pattern) - 0.5);
+    float stroke = 1.0 - smoothstep(0.08, 0.18, line);
+    float opacity = mix(0.08, 0.20, L);
+    return mix(rgb, vec3(step(0.5, L)), stroke * opacity * 0.85);
 }
 `;
 

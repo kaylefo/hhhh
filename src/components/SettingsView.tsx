@@ -13,7 +13,7 @@ type SettingsViewProps = {
 export function SettingsView({ className }: SettingsViewProps) {
   const settings = useGameStore((s) => s.settings);
   const meta = useGameStore((s) => s.meta);
-  const exactColorCount = useGameStore((s) => s.exactColorCount);
+  const rgbCellCount = useGameStore((s) => s.rgbCellCount);
   const setView = useGameStore((s) => s.setView);
   const updateSettings = useGameStore((s) => s.updateSettings);
   const exportData = useGameStore((s) => s.exportData);
@@ -58,14 +58,14 @@ export function SettingsView({ className }: SettingsViewProps) {
         <MaterialPicker
           value={settings.material}
           unlocked={unlockedMaterials}
-          exactColorCount={exactColorCount}
+          rgbCellCount={rgbCellCount}
           onChange={(material) => void updateSettings({ material })}
         />
         <h3 className={styles.subTitle}>Die style</h3>
         <DieStylePicker
           value={settings.dieStyle}
           unlocked={unlockedDieStyles}
-          exactColorCount={exactColorCount}
+          rgbCellCount={rgbCellCount}
           onChange={(dieStyle) => void updateSettings({ dieStyle })}
         />
       </section>

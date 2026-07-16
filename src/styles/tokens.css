@@ -10,6 +10,18 @@
   --kulur-danger: #FF5A68;
   --kulur-shadow: rgba(0, 0, 0, 0.36);
   --kulur-accent: var(--pending-accent, #7AC9E4);
+
+  /* Aliases used by component modules */
+  --kulur-fg-primary: var(--kulur-text);
+  --kulur-fg-muted: var(--kulur-text-muted);
+  --kulur-surface-1: var(--kulur-surface-solid);
+  --kulur-surface-2: var(--kulur-surface-raised);
+  --kulur-space-3: 0.75rem;
+  --kulur-space-4: 1rem;
+  --kulur-text-xs: 0.6875rem;
+  --kulur-text-sm: 0.8125rem;
+  --kulur-text-base: 0.9375rem;
+
   --kulur-radius-sm: 10px;
   --kulur-radius-md: 16px;
   --kulur-radius-lg: 20px;

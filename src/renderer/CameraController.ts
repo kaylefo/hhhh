@@ -16,8 +16,8 @@ type PointerRecord = {
   y: number;
 };
 
-const FRICTION = 0.92;
-const MIN_VELOCITY = 0.05;
+const FRICTION = 0.90;
+const MIN_VELOCITY = 0.02;
 
 export class CameraController {
   private camera: CameraState;
@@ -151,6 +151,14 @@ export class CameraController {
     const worldX = -radius * Math.sqrt(3) * (q + r / 2);
     const worldY = -radius * 1.5 * r;
     this.animateTo({ ...this.camera, worldX, worldY, velocityX: 0, velocityY: 0 }, animated ? 320 : 0);
+  }
+
+  animateToPublic(target: CameraState, durationMs: number): void {
+    this.animateTo(target, durationMs);
+  }
+
+  isDragging(): boolean {
+    return this.panning || this.pointers.size > 0;
   }
 
   update(deltaMs: number): boolean {

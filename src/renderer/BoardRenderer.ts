@@ -149,7 +149,6 @@ export class BoardRenderer {
 
   setFrontier(frontier: AxialCoordinate[]): void {
     this.frontier = frontier;
-    this.frontierRenderer.setFrontier(frontier);
     this.invalidate();
   }
 
@@ -330,10 +329,15 @@ export class BoardRenderer {
     this.frontierRenderer.update(timeSec, this.reducedMotion, this.pendingColor != null ? 1.15 : 1);
     if (this.particleRenderer.update(deltaMs)) animating = true;
     if (this.updatePlacementFx(now)) animating = true;
+    if (this.pendingColor != null && !this.reducedMotion) animating = true;
+    if (!this.reducedMotion && (this.material === 'neon' || this.material === 'prism') && document.visibilityState === 'visible') {
+      animating = true;
+    }
 
-    if (cameraChanged || this.dirty || animating || !this.reducedMotion) {
+    if (cameraChanged || this.dirty || animating) {
       this.renderVisibleChunks();
       this.cullLayers();
+      this.updateVisibleFrontier();
       this.dirty = false;
     }
 
@@ -398,6 +402,77 @@ export class BoardRenderer {
         bounds.minY <= bottomRight.y;
       chunk.mesh.renderable = visible;
     }
+  }
+
+  private updateVisibleFrontier(): void {
+    const margin = HEX_RADIUS * 2;
+    const topLeft = this.cameraController.screenToWorld(-margin, -margin);
+    const bottomRight = this.cameraController.screenToWorld(
+      this.screenWidth + margin,
+      this.screenHeight + margin,
+    );
+    const visible = this.frontier.filter((coord) => {
+      const center = getHexCenter(coord.q, coord.r);
+      return (
+        center.x + HEX_RADIUS >= topLeft.x &&
+        center.x - HEX_RADIUS <= bottomRight.x &&
+        center.y + HEX_RADIUS >= topLeft.y &&
+        center.y - HEX_RADIUS <= bottomRight.y
+      );
+    });
+    this.frontierRenderer.setFrontier(visible);
+  }
+
+  /** Ease camera only when the tile lies outside the central 70% of the viewport. */
+  revealTileIfNeeded(q: number, r: number): void {
+    if (this.cameraController.isDragging()) return;
+    const center = getHexCenter(q, r);
+    const screen = this.cameraController.worldToScreen(center.x, center.y);
+    const left = this.screenWidth * 0.15;
+    const right = this.screenWidth * 0.85;
+    const top = this.screenHeight * 0.15;
+    const bottom = this.screenHeight * 0.85;
+    if (screen.x < left || screen.x > right || screen.y < top || screen.y > bottom) {
+      this.centerOn(q, r, true);
+    }
+  }
+
+  fitAllTiles(tiles: Iterable<TileRecord>, animated = false): void {
+    const list = Array.from(tiles);
+    if (list.length === 0 || list.length >= 500) {
+      this.centerOrigin(animated);
+      return;
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const tile of list) {
+      const c = getHexCenter(tile.q, tile.r);
+      minX = Math.min(minX, c.x - HEX_RADIUS);
+      maxX = Math.max(maxX, c.x + HEX_RADIUS);
+      minY = Math.min(minY, c.y - HEX_RADIUS);
+      maxY = Math.max(maxY, c.y + HEX_RADIUS);
+    }
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    const zoom = Math.min(
+      1.25,
+      Math.max(0.12, Math.min((this.screenWidth * 0.8) / width, (this.screenHeight * 0.8) / height)),
+    );
+    const midX = (minX + maxX) * 0.5;
+    const midY = (minY + maxY) * 0.5;
+    this.cameraController.animateToPublic(
+      {
+        worldX: -midX,
+        worldY: -midY,
+        zoom,
+        velocityX: 0,
+        velocityY: 0,
+      },
+      animated ? 360 : 0,
+    );
+    this.invalidate();
   }
 
   private getVisibleChunkKeys(): Set<string> {

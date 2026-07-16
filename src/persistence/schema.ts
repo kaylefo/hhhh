@@ -43,7 +43,11 @@ export type KulurDB = {
   };
   session: {
     key: string;
-    value: unknown;
+    value: {
+      lastVisibleAt: number;
+      lastPlayTickAt: number;
+      appVersion: number;
+    };
   };
 };
 

@@ -13,18 +13,18 @@ const MATERIAL_LABELS: Record<MaterialId, string> = {
 type MaterialPickerProps = {
   value: MaterialId;
   unlocked: MaterialId[];
-  exactColorCount: number;
+  rgbCellCount: number;
   onChange: (material: MaterialId) => void;
 };
 
-export function MaterialPicker({ value, unlocked, exactColorCount, onChange }: MaterialPickerProps) {
+export function MaterialPicker({ value, unlocked, rgbCellCount, onChange }: MaterialPickerProps) {
   const materials = Object.keys(MATERIAL_UNLOCKS) as MaterialId[];
 
   return (
     <div className={styles.picker} role="radiogroup" aria-label="Board material">
       {materials.map((id) => {
         const required = MATERIAL_UNLOCKS[id];
-        const isUnlocked = unlocked.includes(id) || exactColorCount >= required;
+        const isUnlocked = unlocked.includes(id) || rgbCellCount >= required;
         const selected = value === id;
         return (
           <button
@@ -41,7 +41,7 @@ export function MaterialPicker({ value, unlocked, exactColorCount, onChange }: M
             <span className={[styles.preview, styles[`material_${id}`]].join(' ')} aria-hidden="true" />
             <span className={styles.label}>{MATERIAL_LABELS[id]}</span>
             {!isUnlocked ? (
-              <span className={styles.requirement}>{required.toLocaleString()} colors</span>
+              <span className={styles.requirement}>{required.toLocaleString()} RGB cells</span>
             ) : null}
           </button>
         );

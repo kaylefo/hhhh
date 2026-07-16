@@ -26,6 +26,7 @@ export class FrontierRenderer {
   }
 
   setFrontier(frontier: AxialCoordinate[]): void {
+    if (frontierKeysEqual(this.frontier, frontier)) return;
     this.frontier = frontier;
     this.rebuild();
   }
@@ -123,9 +124,17 @@ export class FrontierRenderer {
 }
 
 function pendingColorToUniform(color: number | null): Float32Array {
-  if (color == null) return new Float32Array([1, 1, 1, 0.85]);
+  if (color == null) return new Float32Array([1, 1, 1, 1]);
   const r = ((color >> 16) & 0xff) / 255;
   const g = ((color >> 8) & 0xff) / 255;
   const b = (color & 0xff) / 255;
-  return new Float32Array([r, g, b, 0.9]);
+  return new Float32Array([r, g, b, 1]);
+}
+
+function frontierKeysEqual(a: AxialCoordinate[], b: AxialCoordinate[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i]!.q !== b[i]!.q || a[i]!.r !== b[i]!.r) return false;
+  }
+  return true;
 }
