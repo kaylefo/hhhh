@@ -6,9 +6,9 @@ async function gotoApp(page: Page) {
 }
 
 async function dismissOnboardingIfPresent(page: Page) {
-  const onboarding = page.getByRole('dialog', { name: /welcome|onboarding|kulur/i });
-  if (await onboarding.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: /continue|get started|begin/i }).click();
+  const begin = page.getByRole('button', { name: 'Begin' });
+  if (await begin.isVisible().catch(() => false)) {
+    await begin.click();
   }
 }
 
@@ -70,6 +70,40 @@ test.describe('Kulur E2E scenarios', () => {
         await expect(page.getByText('PLACE')).toBeVisible();
       }
     }
+  });
+
+  test('6b. roll, place on frontier, then roll again', async ({ page }) => {
+    await gotoApp(page);
+    await dismissOnboardingIfPresent(page);
+
+    const rollButton = page.getByRole('button', { name: 'Roll die' });
+    if (!(await rollButton.isVisible().catch(() => false))) return;
+
+    await rollButton.click();
+    await page.waitForTimeout(900);
+    await expect(rollButton).toBeEnabled({ timeout: 5000 });
+
+    await rollButton.click();
+    await page.waitForTimeout(900);
+    await expect(page.getByRole('button', { name: 'Place pending color on board' })).toBeVisible({
+      timeout: 5000,
+    });
+
+    const canvas = page.locator('main canvas');
+    const box = await canvas.boundingBox();
+    if (!box) return;
+
+    await canvas.click({ position: { x: box.width / 2 + 76, y: box.height / 2 } });
+    await page.waitForTimeout(600);
+
+    await expect(page.getByRole('button', { name: 'Roll die' })).toBeEnabled({ timeout: 5000 });
+    await expect(page.getByText('ROLL', { exact: true })).toBeVisible({ timeout: 5000 });
+
+    await page.getByRole('button', { name: 'Roll die' }).click();
+    await page.waitForTimeout(900);
+    await expect(
+      rollButton.or(page.getByRole('button', { name: 'Place pending color on board' })),
+    ).toBeVisible();
   });
 
   test('7. opens gamut view from dock', async ({ page }) => {

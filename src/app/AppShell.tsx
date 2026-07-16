@@ -77,13 +77,11 @@ export function AppShell() {
 
   const handleFrontierTap = useCallback(
     (q: number, r: number) => {
-      if (interactionState === 'pendingPlacement') {
-        void placeAt(q, r);
-        if (settings.sound) audioEngine.playPlacement(pendingRoll?.packedColor ?? 0, 1);
-        if (settings.haptics && navigator.vibrate) navigator.vibrate(14);
-      }
+      void placeAt(q, r);
+      if (settings.sound) audioEngine.playPlacement(pendingRoll?.packedColor ?? 0, 1);
+      if (settings.haptics && navigator.vibrate) navigator.vibrate(14);
     },
-    [interactionState, placeAt, settings, pendingRoll],
+    [placeAt, settings, pendingRoll],
   );
 
   const getSettings = useCallback(() => settings, [settings]);

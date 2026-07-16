@@ -111,6 +111,7 @@ export class FrontierRenderer {
       shader: this.shader,
       state,
     });
+    this.mesh.eventMode = 'none';
     this.container.addChild(this.mesh);
   }
 

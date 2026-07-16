@@ -4,7 +4,6 @@ import {
   Graphics,
   RenderTexture,
   Text,
-  type FederatedPointerEvent,
 } from 'pixi.js';
 import {
   CHUNK_SIZE,
@@ -77,7 +76,7 @@ export class BoardRenderer {
   private dirty = true;
   private detailMode = true;
   private tickerBound: (ticker: { deltaMS: number; lastTime: number }) => void;
-  private pointerDown: { x: number; y: number; time: number } | null = null;
+  private pointerGesture: { x: number; y: number; time: number; dragged: boolean } | null = null;
   private screenWidth = 1;
   private screenHeight = 1;
 
@@ -86,12 +85,17 @@ export class BoardRenderer {
     this.options = options;
 
     this.world.label = 'world';
+    this.world.eventMode = 'none';
     this.detailLayer.label = 'detail';
+    this.detailLayer.eventMode = 'none';
     this.overviewLayer.label = 'overview';
+    this.overviewLayer.eventMode = 'none';
     this.world.addChild(this.detailLayer, this.overviewLayer);
 
     this.frontierRenderer = new FrontierRenderer(this.outlineShader);
     this.particleRenderer = new ParticleRenderer();
+    this.frontierRenderer.container.eventMode = 'none';
+    this.particleRenderer.container.eventMode = 'none';
     this.world.addChild(this.frontierRenderer.container, this.particleRenderer.container);
 
     this.cameraController = new CameraController(
@@ -448,25 +452,27 @@ export class BoardRenderer {
   private bindEvents(): void {
     const canvas = this.app.canvas;
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
-    canvas.addEventListener('pointerdown', this.onPointerDown);
-    canvas.addEventListener('pointermove', this.onPointerMove);
-    canvas.addEventListener('pointerup', this.onPointerUp);
-    canvas.addEventListener('pointercancel', this.onPointerUp);
-    canvas.addEventListener('pointerleave', this.onPointerUp);
-    this.app.stage.eventMode = 'static';
-    this.app.stage.hitArea = this.app.screen;
-    this.app.stage.on('pointertap', this.onStageTap);
+    canvas.addEventListener('pointerdown', this.onCanvasPointerDown);
+    canvas.addEventListener('pointermove', this.onCanvasPointerMove);
+    canvas.addEventListener('pointerup', this.onCanvasPointerUp);
+    canvas.addEventListener('pointercancel', this.onCanvasPointerUp);
   }
 
   private unbindEvents(): void {
     const canvas = this.app.canvas;
     canvas.removeEventListener('wheel', this.onWheel);
-    canvas.removeEventListener('pointerdown', this.onPointerDown);
-    canvas.removeEventListener('pointermove', this.onPointerMove);
-    canvas.removeEventListener('pointerup', this.onPointerUp);
-    canvas.removeEventListener('pointercancel', this.onPointerUp);
-    canvas.removeEventListener('pointerleave', this.onPointerUp);
-    this.app.stage.off('pointertap', this.onStageTap);
+    canvas.removeEventListener('pointerdown', this.onCanvasPointerDown);
+    canvas.removeEventListener('pointermove', this.onCanvasPointerMove);
+    canvas.removeEventListener('pointerup', this.onCanvasPointerUp);
+    canvas.removeEventListener('pointercancel', this.onCanvasPointerUp);
+  }
+
+  private clientToGlobal(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.app.canvas.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
   }
 
   private onWheel = (event: WheelEvent): void => {
@@ -477,37 +483,49 @@ export class BoardRenderer {
     this.invalidate();
   };
 
-  private onPointerDown = (event: PointerEvent): void => {
+  private onCanvasPointerDown = (event: PointerEvent): void => {
     if (!this.interactionEnabled) return;
-    const rect = this.app.canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    this.cameraController.onPointerDown(event.pointerId, x, y);
-    this.pointerDown = { x, y, time: performance.now() };
+    const global = this.clientToGlobal(event.clientX, event.clientY);
+    this.cameraController.onPointerDown(event.pointerId, global.x, global.y);
+    this.app.canvas.setPointerCapture(event.pointerId);
+    this.pointerGesture = {
+      x: global.x,
+      y: global.y,
+      time: performance.now(),
+      dragged: false,
+    };
     this.invalidate();
   };
 
-  private onPointerMove = (event: PointerEvent): void => {
+  private onCanvasPointerMove = (event: PointerEvent): void => {
     if (!this.interactionEnabled) return;
-    const rect = this.app.canvas.getBoundingClientRect();
-    this.cameraController.onPointerMove(event.pointerId, event.clientX - rect.left, event.clientY - rect.top);
+    const global = this.clientToGlobal(event.clientX, event.clientY);
+    this.cameraController.onPointerMove(event.pointerId, global.x, global.y);
+    if (this.pointerGesture && !this.pointerGesture.dragged) {
+      const dx = global.x - this.pointerGesture.x;
+      const dy = global.y - this.pointerGesture.y;
+      if (Math.hypot(dx, dy) >= 8) {
+        this.pointerGesture.dragged = true;
+      }
+    }
     this.invalidate();
   };
 
-  private onPointerUp = (event: PointerEvent): void => {
+  private onCanvasPointerUp = (event: PointerEvent): void => {
+    const global = this.clientToGlobal(event.clientX, event.clientY);
     this.cameraController.onPointerUp(event.pointerId);
+    this.handleCanvasTap(global.x, global.y);
     this.invalidate();
   };
 
-  private onStageTap = (event: FederatedPointerEvent): void => {
-    if (!this.interactionEnabled || !this.pointerDown) return;
-    const elapsed = performance.now() - this.pointerDown.time;
-    const dx = event.global.x - this.pointerDown.x;
-    const dy = event.global.y - this.pointerDown.y;
-    this.pointerDown = null;
-    if (elapsed > 450 || Math.hypot(dx, dy) > 12) return;
+  private handleCanvasTap(globalX: number, globalY: number): void {
+    if (!this.interactionEnabled || !this.pointerGesture) return;
+    const gesture = this.pointerGesture;
+    this.pointerGesture = null;
+    if (gesture.dragged) return;
+    if (performance.now() - gesture.time > 450) return;
 
-    const world = this.cameraController.screenToWorld(event.global.x, event.global.y);
+    const world = this.cameraController.screenToWorld(globalX, globalY);
     const axial = axialFromWorld(world.x, world.y, HEX_RADIUS);
     const key = axialKey(axial);
 
@@ -518,7 +536,7 @@ export class BoardRenderer {
     if (this.tiles.has(key)) {
       this.options.onTileTap(axial.q, axial.r);
     }
-  };
+  }
 
   spawnPlacementParticles(q: number, r: number, color: number): void {
     const center = getHexCenter(q, r);

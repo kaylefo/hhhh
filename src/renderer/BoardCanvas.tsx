@@ -46,6 +46,15 @@ export function BoardCanvas({
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const rendererRef = useRef<BoardRenderer | null>(null);
+  const onTileTapRef = useRef(onTileTap);
+  const onFrontierTapRef = useRef(onFrontierTap);
+  const onPanChangeRef = useRef(onPanChange);
+  const getSettingsRef = useRef(getSettings);
+
+  onTileTapRef.current = onTileTap;
+  onFrontierTapRef.current = onFrontierTap;
+  onPanChangeRef.current = onPanChange;
+  getSettingsRef.current = getSettings;
 
   /* eslint-disable react-hooks/exhaustive-deps -- Pixi mounts once; props sync in effects below */
   useEffect(() => {
@@ -77,10 +86,10 @@ export function BoardCanvas({
       app.renderer.resize(Math.max(1, rect.width), Math.max(1, rect.height));
 
       const renderer = new BoardRenderer(app, {
-        onTileTap,
-        onFrontierTap,
-        onPanChange,
-        getSettings,
+        onTileTap: (q, r) => onTileTapRef.current(q, r),
+        onFrontierTap: (q, r) => onFrontierTapRef.current(q, r),
+        onPanChange: (cameraState) => onPanChangeRef.current(cameraState),
+        getSettings: () => getSettingsRef.current(),
       });
       rendererRef.current = renderer;
       renderer.resize(rect.width, rect.height);

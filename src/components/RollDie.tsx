@@ -85,6 +85,13 @@ export function RollDie({ className }: RollDieProps) {
   useEffect(() => () => clearSpinTimeout(), [clearSpinTimeout]);
 
   useEffect(() => {
+    if (interactionState === 'idle' || interactionState === 'pendingPlacement') {
+      setSpinning(false);
+      clearSpinTimeout();
+    }
+  }, [interactionState, clearSpinTimeout]);
+
+  useEffect(() => {
     if (interactionState !== 'rolling') return;
     if (reducedMotion) return;
     setSpinning(true);

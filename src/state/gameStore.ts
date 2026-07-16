@@ -56,6 +56,7 @@ import {
   getAllDiscoveriesForExport,
   replaceWorldData,
 } from '../persistence/repositories';
+import { hydrateMeta } from '../persistence/metaSerialize';
 import { clearDatabase } from '../persistence/database';
 import {
   buildExportPayload,
@@ -263,7 +264,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setView: (v) => {
     set({ view: v, menuOpen: false });
     if (typeof window !== 'undefined') {
-      const path = v === 'board' ? '/' : `/${v}`;
+      const base = import.meta.env.BASE_URL;
+      const path = v === 'board' ? base : `${base}${v}`.replace(/\/{2,}/g, '/');
       window.history.pushState({ view: v }, '', path);
     }
   },
@@ -299,6 +301,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!meta) {
         meta = createNewWorld();
         await saveMeta(meta);
+      } else {
+        meta = hydrateMeta(meta);
       }
 
       const exactPages = await loadExactPages();
@@ -372,130 +376,179 @@ export const useGameStore = create<GameStore>((set, get) => ({
       clearTimeout(undoTimer);
       undoTimer = null;
     }
-    await saveUndo(null);
-
-    const rollIndex = meta.rollCount + 1;
-    const timestamp = Date.now();
-
-    const recipe = generateRoll(
-      {
-        foundationAnchors: meta.foundationAnchors,
-        foundationOrder: meta.foundationAnchors,
-        foundationIndex: state.foundationIndex,
-        expandedAnchors: meta.expandedAnchors,
-        recentRing: meta.recentRing,
-        reservoir: meta.reservoir,
-        hueHistogram: meta.hueHistogram,
-        rollCount: meta.rollCount,
-        placementCount: meta.placementCount,
-        exactBitset: state.exactBitset,
-        rgbBitset: state.rgbBitset,
-        recentRolls: state.recentRolls,
-      },
-      rollIndex,
-      timestamp,
-      pickScarceBinFromHistogram,
-    );
-
-    meta.rollCount = rollIndex;
-    meta.pendingRoll = recipe;
-    meta.statistics.rolls = rollIndex;
-    await persistPendingRoll(meta);
-
-    const reducedMotion = state.settings.reducedMotion ?? false;
-    const delay = reducedMotion ? 100 : ROLL_ANIMATION_MS;
-    await new Promise((r) => setTimeout(r, delay));
-
-    if (meta.placementCount === 0) {
-      set({
-        pendingRoll: recipe,
-        foundationIndex: state.foundationIndex + (recipe.isFoundation ? 1 : 0),
-        recentRolls: [...state.recentRolls.slice(-31), recipe.packedColor],
-      });
-      await get().placeAt(0, 0);
-      return;
+    try {
+      await saveUndo(null);
+    } catch (persistErr) {
+      if (import.meta.env.DEV) {
+        console.error('Failed to clear undo snapshot', persistErr);
+      }
     }
 
-    set({
-      interactionState: 'pendingPlacement',
-      pendingRoll: recipe,
-      foundationIndex: state.foundationIndex + (recipe.isFoundation ? 1 : 0),
-      recentRolls: [...state.recentRolls.slice(-31), recipe.packedColor],
-    });
-    get().announce(`Rolled ${recipe.hex}. Choose an open hex.`);
+    try {
+      const rollIndex = meta.rollCount + 1;
+      const timestamp = Date.now();
+
+      const recipe = generateRoll(
+        {
+          foundationAnchors: meta.foundationAnchors,
+          foundationOrder: meta.foundationAnchors,
+          foundationIndex: state.foundationIndex,
+          expandedAnchors: meta.expandedAnchors,
+          recentRing: meta.recentRing,
+          reservoir: meta.reservoir,
+          hueHistogram: meta.hueHistogram,
+          rollCount: meta.rollCount,
+          placementCount: meta.placementCount,
+          exactBitset: state.exactBitset,
+          rgbBitset: state.rgbBitset,
+          recentRolls: state.recentRolls,
+        },
+        rollIndex,
+        timestamp,
+        pickScarceBinFromHistogram,
+      );
+
+      meta.rollCount = rollIndex;
+      meta.pendingRoll = recipe;
+      meta.statistics.rolls = rollIndex;
+
+      try {
+        await persistPendingRoll(meta);
+      } catch (persistErr) {
+        if (import.meta.env.DEV) {
+          console.error('Failed to persist pending roll', persistErr);
+        }
+      }
+
+      const reducedMotion = state.settings.reducedMotion ?? false;
+      const delay = reducedMotion ? 100 : ROLL_ANIMATION_MS;
+      await new Promise((r) => setTimeout(r, delay));
+
+      const foundationDelta = recipe.isFoundation ? 1 : 0;
+
+      if (meta.placementCount === 0) {
+        set({
+          pendingRoll: recipe,
+          foundationIndex: state.foundationIndex + foundationDelta,
+          recentRolls: [...state.recentRolls.slice(-31), recipe.packedColor],
+        });
+        await get().placeAt(0, 0);
+        const afterPlace = get();
+        if (afterPlace.interactionState === 'rolling') {
+          set({
+            interactionState: afterPlace.pendingRoll ? 'pendingPlacement' : 'idle',
+          });
+        }
+        return;
+      }
+
+      set({
+        interactionState: 'pendingPlacement',
+        pendingRoll: recipe,
+        foundationIndex: state.foundationIndex + foundationDelta,
+        recentRolls: [...state.recentRolls.slice(-31), recipe.packedColor],
+      });
+      get().announce(`Rolled ${recipe.hex}. Choose an open hex.`);
+    } catch (err) {
+      set({ interactionState: 'idle', pendingRoll: null });
+      get().addToast(err instanceof Error ? err.message : 'Roll failed', 'error');
+    }
   },
 
   placeAt: async (q, r) => {
     const state = get();
     const recipe = state.pendingRoll;
     const meta = state.meta;
-    if (!recipe || !meta) return;
+    if (!recipe || !meta) {
+      if (state.interactionState === 'rolling') {
+        set({ interactionState: 'idle', pendingRoll: null });
+      }
+      return;
+    }
     const canPlace =
       state.interactionState === 'pendingPlacement' ||
       (state.interactionState === 'rolling' && meta.placementCount === 0);
-    if (!canPlace) return;
+    if (!canPlace) {
+      if (state.interactionState === 'rolling') {
+        set({ interactionState: 'pendingPlacement' });
+      }
+      return;
+    }
 
     set({ interactionState: 'placing' });
 
-    const board = boardStateFromStore(state);
-    const result = placeTile(board, { q, r }, recipe, recipe.rollIndex);
+    try {
+      const board = boardStateFromStore(get());
+      const result = placeTile(board, { q, r }, recipe, recipe.rollIndex);
 
-    syncMetaFromBoard(meta, board);
-    meta.placementCount++;
-    meta.pendingRoll = null;
+      syncMetaFromBoard(meta, board);
+      meta.placementCount++;
+      meta.pendingRoll = null;
 
-    const unlocks = checkUnlocks(meta);
+      const unlocks = checkUnlocks(meta);
 
-    set({
-      tiles: new Map(board.tiles),
-      discoveries: Array.from(board.discoveries.values()),
-      exactColorCount: board.exactBitset.count,
-      rgbCellCount: board.rgbBitset.count,
-      exactBitset: board.exactBitset,
-      rgbBitset: board.rgbBitset,
-      frontier: board.frontier,
-      meta: { ...meta },
-      pendingRoll: null,
-      interactionState: 'idle',
-      undoAvailable: true,
-      undoSnapshot: result.undoSnapshot,
-      discoveryFeedback: formatDiscoveryFeedback(
-        result.newExactCount,
-        result.newRgbCellCount,
-        result.isPaletteExpansion,
-      ),
-      milestoneUnlock: unlocks.material
-        ? { type: 'material', id: unlocks.material }
-        : unlocks.die
-          ? { type: 'die', id: unlocks.die }
-          : null,
-    });
+      set({
+        tiles: new Map(board.tiles),
+        discoveries: Array.from(board.discoveries.values()),
+        exactColorCount: board.exactBitset.count,
+        rgbCellCount: board.rgbBitset.count,
+        exactBitset: board.exactBitset,
+        rgbBitset: board.rgbBitset,
+        frontier: board.frontier.clone(),
+        meta: { ...meta },
+        pendingRoll: null,
+        interactionState: 'idle',
+        undoAvailable: true,
+        undoSnapshot: result.undoSnapshot,
+        discoveryFeedback: formatDiscoveryFeedback(
+          result.newExactCount,
+          result.newRgbCellCount,
+          result.isPaletteExpansion,
+        ),
+        milestoneUnlock: unlocks.material
+          ? { type: 'material', id: unlocks.material }
+          : unlocks.die
+            ? { type: 'die', id: unlocks.die }
+            : null,
+      });
 
-    get().announce(
-      `Placed ${recipe.hex}. ${result.newExactCount} exact colors and ${result.newRgbCellCount} RGB cells discovered.`,
-    );
+      get().announce(
+        `Placed ${recipe.hex}. ${result.newExactCount} exact colors and ${result.newRgbCellCount} RGB cells discovered.`,
+      );
 
-    await persistPlacementAtomic(
-      meta,
-      result.tile,
-      result.newDiscoveries,
-      board.exactBitset.getPages(),
-      board.rgbBitset.getData(),
-      result.undoSnapshot,
-    );
+      try {
+        await persistPlacementAtomic(
+          meta,
+          result.tile,
+          result.newDiscoveries,
+          board.exactBitset.getPages(),
+          board.rgbBitset.getData(),
+          result.undoSnapshot,
+        );
+      } catch (persistErr) {
+        if (import.meta.env.DEV) {
+          console.error('Failed to persist placement', persistErr);
+        }
+        get().addToast('Could not save progress locally', 'error');
+      }
 
-    if (undoTimer) clearTimeout(undoTimer);
-    undoTimer = window.setTimeout(() => {
-      set({ undoAvailable: false, undoSnapshot: null });
-      void saveUndo(null);
-    }, UNDO_TIMEOUT_MS);
+      if (undoTimer) clearTimeout(undoTimer);
+      undoTimer = window.setTimeout(() => {
+        set({ undoAvailable: false, undoSnapshot: null });
+        void saveUndo(null);
+      }, UNDO_TIMEOUT_MS);
 
-    setTimeout(() => set({ discoveryFeedback: null }), DISCOVERY_FEEDBACK_MS);
+      setTimeout(() => set({ discoveryFeedback: null }), DISCOVERY_FEEDBACK_MS);
 
-    const renderer = get().boardRenderer;
-    if (renderer) {
-      renderer.centerOn(q, r, true);
-      renderer.highlightTile(q, r, 1200);
+      const renderer = get().boardRenderer;
+      if (renderer) {
+        renderer.centerOn(q, r, true);
+        renderer.highlightTile(q, r, 1200);
+      }
+    } catch (err) {
+      const pending = get().pendingRoll;
+      set({ interactionState: pending ? 'pendingPlacement' : 'idle' });
+      get().addToast(err instanceof Error ? err.message : 'Placement failed', 'error');
     }
   },
 
@@ -528,7 +581,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       rgbCellCount: board.rgbBitset.count,
       exactBitset: board.exactBitset,
       rgbBitset: board.rgbBitset,
-      frontier: board.frontier,
+      frontier: board.frontier.clone(),
       meta: { ...meta },
       pendingRoll: snapshot.pendingRecipe,
       interactionState: 'pendingPlacement',
@@ -612,7 +665,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         settings,
         tiles: tilesMap,
         discoveries,
-        frontier: derived.frontier,
+        frontier: derived.frontier.clone(),
         exactBitset: derived.exactBitset,
         rgbBitset: derived.rgbBitset,
         exactColorCount: derived.exactBitset.count,

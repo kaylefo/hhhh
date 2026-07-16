@@ -9,6 +9,7 @@ import type {
 import { getDatabase, chunkKey } from './database';
 import { DEFAULT_SETTINGS } from '../game/constants';
 import { settingsSchema } from './schema';
+import { cloneMetaForStorage, hydrateMeta } from './metaSerialize';
 
 export { chunkKey };
 
@@ -26,13 +27,14 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 export async function loadMeta(): Promise<WorldMeta | null> {
   const db = await getDatabase();
-  return (await db.get('meta', 'world')) ?? null;
+  const raw = await db.get('meta', 'world');
+  return raw ? hydrateMeta(raw) : null;
 }
 
 export async function saveMeta(meta: WorldMeta): Promise<void> {
   const db = await getDatabase();
   meta.updatedAt = Date.now();
-  await db.put('meta', meta, 'world');
+  await db.put('meta', cloneMetaForStorage(meta), 'world');
 }
 
 export async function loadAllTiles(_worldId: string): Promise<Map<string, TileRecord>> {
@@ -121,7 +123,7 @@ export async function persistPlacementAtomic(
     'readwrite',
   );
   meta.updatedAt = Date.now();
-  await tx.objectStore('meta').put(meta, 'world');
+  await tx.objectStore('meta').put(cloneMetaForStorage(meta), 'world');
   await tx.objectStore('chunks').put(tile, chunkKey(meta.worldId, tile.q, tile.r));
   for (const d of discoveries) {
     await tx.objectStore('discoveries').put(d, d.packed);

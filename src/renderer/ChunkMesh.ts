@@ -63,6 +63,7 @@ export class ChunkMesh {
       shader: options.shader,
       state,
     });
+    this.mesh.eventMode = 'none';
     this.mesh.label = `chunk-${this.key}`;
   }
 

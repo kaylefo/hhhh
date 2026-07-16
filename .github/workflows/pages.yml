@@ -22,7 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_BASE: ./
+          VITE_BASE: /hhhh/
 
       - name: SPA fallback for client routing
         run: cp dist/index.html dist/404.html
