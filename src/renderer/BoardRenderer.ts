@@ -8,6 +8,7 @@ import {
 import {
   CHUNK_SIZE,
   HEX_RADIUS,
+  PLACEMENT_ANIMATION_MS,
   ZOOM_DETAIL_THRESHOLD,
 } from '@/game/constants';
 import type {
@@ -17,7 +18,8 @@ import type {
   Settings,
   TileRecord,
 } from '@/game/types';
-import { axialFromWorld, axialKey } from '@/game/hex/axial';
+import { axialFromWorld, axialKey, hexCorners } from '@/game/hex/axial';
+import { formatHex } from '@/game/color/srgb';
 import { CameraController } from './CameraController';
 import { ChunkMesh, chunkWorldBounds, collectChunkKeys } from './ChunkMesh';
 import { ChunkTextureCache } from './ChunkTextureCache';
@@ -50,6 +52,17 @@ type HighlightState = {
   until: number;
 };
 
+type PlacementFx = {
+  q: number;
+  r: number;
+  color: number;
+  startTime: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+};
+
 const OVERVIEW_TEXTURE_SCALE = 0.35;
 
 export class BoardRenderer {
@@ -80,6 +93,10 @@ export class BoardRenderer {
   private pointerGesture: { x: number; y: number; time: number; dragged: boolean } | null = null;
   private screenWidth = 1;
   private screenHeight = 1;
+  private placementFx: PlacementFx | null = null;
+  private fxLayer = new Container();
+  private fxGraphics = new Graphics();
+  private scaleGraphics = new Graphics();
 
   constructor(app: Application, options: BoardRendererOptions) {
     this.app = app;
@@ -108,6 +125,13 @@ export class BoardRenderer {
     );
 
     app.stage.addChild(this.world);
+    this.fxLayer.label = 'placement-fx';
+    this.fxLayer.eventMode = 'none';
+    this.fxGraphics.eventMode = 'none';
+    this.scaleGraphics.eventMode = 'none';
+    this.fxLayer.addChild(this.fxGraphics);
+    this.world.addChild(this.scaleGraphics);
+    app.stage.addChild(this.fxLayer);
     this.bindEvents();
 
     this.tickerBound = (ticker) => this.onTick(ticker.deltaMS);
@@ -272,6 +296,7 @@ export class BoardRenderer {
     this.frontierRenderer.destroy();
     this.particleRenderer.destroy();
     this.cameraController.destroy();
+    this.fxLayer.destroy({ children: true });
     this.tileShader.destroy(true);
     this.outlineShader.destroy(true);
     this.world.destroy({ children: true });
@@ -299,10 +324,12 @@ export class BoardRenderer {
       uMaterial: materialToUniform(this.material),
       uColorPatterns: this.colorPatterns ? 1 : 0,
       uReducedMotion: this.reducedMotion ? 1 : 0,
+      uZoom: this.cameraController.getCamera().zoom,
     });
 
     this.frontierRenderer.update(timeSec, this.reducedMotion, this.pendingColor != null ? 1.15 : 1);
     if (this.particleRenderer.update(deltaMs)) animating = true;
+    if (this.updatePlacementFx(now)) animating = true;
 
     if (cameraChanged || this.dirty || animating || !this.reducedMotion) {
       this.renderVisibleChunks();
@@ -561,4 +588,87 @@ export class BoardRenderer {
     this.particleRenderer.emit(center.x, center.y, color);
     this.invalidate();
   }
+
+  animatePlacement(
+    q: number,
+    r: number,
+    color: number,
+    fromScreen?: { x: number; y: number },
+  ): void {
+    const from = fromScreen ?? {
+      x: this.screenWidth * 0.5,
+      y: this.screenHeight - 96,
+    };
+    const center = getHexCenter(q, r);
+    const to = this.cameraController.worldToScreen(center.x, center.y);
+    this.placementFx = {
+      q,
+      r,
+      color,
+      startTime: performance.now(),
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
+    };
+    this.invalidate();
+  }
+
+  private updatePlacementFx(now: number): boolean {
+    if (!this.placementFx) return false;
+
+    const fx = this.placementFx;
+    const elapsed = now - fx.startTime;
+    const flyDuration = PLACEMENT_ANIMATION_MS;
+    const scaleDuration = 180;
+    const total = flyDuration + scaleDuration;
+
+    if (elapsed >= total) {
+      this.placementFx = null;
+      this.fxGraphics.clear();
+      this.scaleGraphics.clear();
+      return false;
+    }
+
+    const hexColor = formatHex(fx.color);
+    this.fxGraphics.clear();
+    this.scaleGraphics.clear();
+
+    if (elapsed <= flyDuration) {
+      const t = easeOutCubic(elapsed / flyDuration);
+      const ctrlX = (fx.fromX + fx.toX) * 0.5;
+      const ctrlY = Math.min(fx.fromY, fx.toY) - 56;
+      const x = quadBezier(fx.fromX, ctrlX, fx.toX, t);
+      const y = quadBezier(fx.fromY, ctrlY, fx.toY, t);
+      const radius = 10 + (1 - t) * 6;
+      this.fxGraphics.circle(x, y, radius);
+      this.fxGraphics.fill({ color: hexColor, alpha: 0.95 });
+    }
+
+    const scaleElapsed = Math.max(0, elapsed - flyDuration * 0.55);
+    if (scaleElapsed > 0) {
+      const scaleT = Math.min(1, scaleElapsed / scaleDuration);
+      let scale: number;
+      if (scaleT < 0.65) {
+        scale = 0.2 + (scaleT / 0.65) * 0.88;
+      } else {
+        scale = 1.08 - ((scaleT - 0.65) / 0.35) * 0.08;
+      }
+      const center = getHexCenter(fx.q, fx.r);
+      const corners = hexCorners(center.x, center.y, HEX_RADIUS * scale);
+      this.scaleGraphics.poly(corners.flatMap((c) => [c.x, c.y]));
+      this.scaleGraphics.fill({ color: hexColor, alpha: 0.92 });
+    }
+
+    return true;
+  }
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3;
+}
+
+function quadBezier(p0: number, p1: number, p2: number, t: number): number {
+  const inv = 1 - t;
+  return inv * inv * p0 + 2 * inv * t * p1 + t * t * p2;
 }

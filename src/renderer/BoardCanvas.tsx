@@ -29,6 +29,7 @@ export type BoardCanvasProps = {
       colorCount?: number;
     }) => Promise<Blob>;
     spawnPlacementParticles: (q: number, r: number, color: number) => void;
+    animatePlacement: (q: number, r: number, color: number, fromScreen?: { x: number; y: number }) => void;
   }) => void;
 };
 
@@ -119,8 +120,9 @@ export function BoardCanvas({
         setCamera: (c) => renderer.setCamera(c),
         getCamera: () => renderer.getCamera(),
         captureViewport: (opts) => renderer.captureViewport(opts),
-    spawnPlacementParticles: (q, r, color) => renderer.spawnPlacementParticles(q, r, color),
-  });
+        spawnPlacementParticles: (q, r, color) => renderer.spawnPlacementParticles(q, r, color),
+        animatePlacement: (q, r, color, from) => renderer.animatePlacement(q, r, color, from),
+      });
 
       const observer = new ResizeObserver((entries) => {
         const entry = entries[0];

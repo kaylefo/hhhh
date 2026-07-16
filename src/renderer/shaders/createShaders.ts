@@ -23,6 +23,7 @@ export type TileShaderUniforms = {
   uMaterial: number;
   uColorPatterns: number;
   uReducedMotion: number;
+  uZoom: number;
 };
 
 export function createTileShader(): Shader {
@@ -39,6 +40,7 @@ export function createTileShader(): Shader {
         uMaterial: { value: 0, type: 'f32' },
         uColorPatterns: { value: 0, type: 'f32' },
         uReducedMotion: { value: 0, type: 'f32' },
+        uZoom: { value: 1, type: 'f32' },
       }),
     },
   });
@@ -76,6 +78,7 @@ export function updateTileShaderUniforms(
   group.uniforms.uMaterial = uniforms.uMaterial;
   group.uniforms.uColorPatterns = uniforms.uColorPatterns;
   group.uniforms.uReducedMotion = uniforms.uReducedMotion;
+  group.uniforms.uZoom = uniforms.uZoom;
   group.update();
 }
 

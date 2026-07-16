@@ -11,6 +11,7 @@ uniform float uTime;
 uniform float uMaterial;
 uniform float uColorPatterns;
 uniform float uReducedMotion;
+uniform float uZoom;
 
 vec3 oklabToLinear(vec3 lab) {
     float l_ = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
@@ -109,6 +110,12 @@ if (matId < 0.5) {
 }
 
 rgb = colorPatternOverlay(rgb, vLocal, vPattern, uColorPatterns);
+
+if (uZoom >= 0.6) {
+    float dist = length(vLocal);
+    float seam = smoothstep(0.84, 0.96, dist) * (1.0 - smoothstep(0.96, 1.0, dist));
+    rgb = mix(rgb, vec3(1.0), seam * 0.07);
+}
 
 float selected = step(0.5, mod(vFlags, 2.0));
 float highlighted = step(1.5, vFlags);

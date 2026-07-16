@@ -1,9 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { NEIGHBOR_DIRECTIONS } from '../game/constants';
 import { createColorRecord, formatRgbDisplay } from '../game/color/formatting';
 import { formatHslDisplay, formatOklchDisplay } from '../game/color/oklch';
+import {
+  computeTileEdgeMixes,
+  computeTileVertexMixes,
+  formatParentType,
+} from '../game/board/tileMixes';
 import { getNeighbors } from '../game/hex/axial';
 import { useGameStore } from '../state/gameStore';
+import { ShareViewSheet } from './ShareViewSheet';
 import styles from './TileInspector.module.css';
 
 function CloseIcon() {
@@ -36,6 +42,7 @@ export function TileInspector({ className }: TileInspectorProps) {
   const undo = useGameStore((s) => s.undo);
   const undoAvailable = useGameStore((s) => s.undoAvailable);
   const getTileAt = useGameStore((s) => s.getTileAt);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const color = useMemo(
     () => (selectedTile ? createColorRecord(selectedTile.packedColor) : null),
@@ -51,6 +58,16 @@ export function TileInspector({ className }: TileInspectorProps) {
     }));
   }, [selectedTile, getTileAt]);
 
+  const edgeMixes = useMemo(
+    () => (selectedTile ? computeTileEdgeMixes(selectedTile, getTileAt) : []),
+    [selectedTile, getTileAt],
+  );
+
+  const vertexMixes = useMemo(
+    () => (selectedTile ? computeTileVertexMixes(selectedTile, getTileAt) : []),
+    [selectedTile, getTileAt],
+  );
+
   if (!selectedTile || !inspectorOpen || !color) return null;
 
   const placedAt = new Date(selectedTile.placedAt).toLocaleString();
@@ -65,7 +82,8 @@ export function TileInspector({ className }: TileInspectorProps) {
   };
 
   return (
-    <section className={[styles.sheet, className].filter(Boolean).join(' ')} aria-label="Tile inspector">
+    <>
+      <section className={[styles.sheet, className].filter(Boolean).join(' ')} aria-label="Tile inspector">
         <header className={styles.header}>
           <div className={styles.preview} style={{ backgroundColor: color.hex }} aria-hidden="true" />
           <div>
@@ -80,7 +98,7 @@ export function TileInspector({ className }: TileInspectorProps) {
         </header>
 
         <div className={styles.formats}>
-          <FormatRow label="HEX" value={color.hex.toUpperCase()} onCopy={() => copyField(color.hex, 'hex')} />
+          <FormatRow label="Hex" value={color.hex.toUpperCase()} onCopy={() => copyField(color.hex, 'hex')} />
           <FormatRow
             label="RGB"
             value={formatRgbDisplay(color.rgb)}
@@ -98,8 +116,26 @@ export function TileInspector({ className }: TileInspectorProps) {
           />
         </div>
 
+        {selectedTile.recipe.parents.length > 0 ? (
+          <section className={styles.recipe} aria-label="Parent recipe">
+            <h3 className={styles.sectionTitle}>Recipe</h3>
+            <ul className={styles.recipeList}>
+              {selectedTile.recipe.parents.map((parent, index) => (
+                <li key={`${parent.sourceId}-${index}`} className={styles.recipeItem}>
+                  <span className={styles.neighborSwatch} style={{ backgroundColor: parent.hex }} aria-hidden="true" />
+                  <span className={styles.recipeLabel}>
+                    {formatParentType(parent.type)} · {parent.hex.toUpperCase()} · {(parent.weight * 100).toFixed(1)}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {selectedTile.recipe.includesWhite ? <p className={styles.recipeNote}>Includes white tint</p> : null}
+            {selectedTile.recipe.includesBlack ? <p className={styles.recipeNote}>Includes black shade</p> : null}
+          </section>
+        ) : null}
+
         <section className={styles.neighbors} aria-label="Neighbors">
-          <h3 className={styles.sectionTitle}>Neighbors</h3>
+          <h3 className={styles.sectionTitle}>Neighbors ({selectedTile.neighborCount})</h3>
           <ul className={styles.neighborList}>
             {neighbors.map((n) => (
               <li key={`${n.q},${n.r}`} className={styles.neighborItem}>
@@ -116,6 +152,34 @@ export function TileInspector({ className }: TileInspectorProps) {
           </ul>
         </section>
 
+        {edgeMixes.length > 0 ? (
+          <section className={styles.mixes} aria-label="Edge mixtures">
+            <h3 className={styles.sectionTitle}>Edge mixtures</h3>
+            <div className={styles.swatchRow}>
+              {edgeMixes.map((edge) => (
+                <div key={edge.direction} className={styles.mixSwatch} title={edge.hex.toUpperCase()}>
+                  <span className={styles.mixColor} style={{ backgroundColor: edge.hex }} aria-hidden="true" />
+                  <span className={styles.mixLabel}>{edge.hex.toUpperCase()}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {vertexMixes.length > 0 ? (
+          <section className={styles.mixes} aria-label="Vertex mixtures">
+            <h3 className={styles.sectionTitle}>Vertex mixtures</h3>
+            <div className={styles.swatchRow}>
+              {vertexMixes.map((vertex) => (
+                <div key={vertex.direction} className={styles.mixSwatch} title={vertex.hex.toUpperCase()}>
+                  <span className={styles.mixColor} style={{ backgroundColor: vertex.hex }} aria-hidden="true" />
+                  <span className={styles.mixLabel}>{vertex.hex.toUpperCase()}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <footer className={styles.actions}>
           <button
             type="button"
@@ -124,16 +188,21 @@ export function TileInspector({ className }: TileInspectorProps) {
           >
             Center tile
           </button>
+          <button type="button" className={styles.actionButton} onClick={() => setShareOpen(true)}>
+            Share current view
+          </button>
           <button
             type="button"
             className={styles.actionButton}
             disabled={!undoAvailable}
             onClick={() => void undo()}
           >
-            Undo placement
+            Undo
           </button>
         </footer>
-    </section>
+      </section>
+      <ShareViewSheet open={shareOpen} onClose={() => setShareOpen(false)} />
+    </>
   );
 }
 

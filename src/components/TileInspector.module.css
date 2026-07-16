@@ -139,8 +139,70 @@
   color: var(--kulur-fg-primary, #f4f4f5);
 }
 
+.recipe {
+  margin-top: var(--kulur-space-4, 1rem);
+}
+
+.recipeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.recipeItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.recipeLabel {
+  font-size: var(--kulur-text-xs, 0.6875rem);
+  color: var(--kulur-fg-primary, #f4f4f5);
+}
+
+.recipeNote {
+  margin: 0.375rem 0 0;
+  font-size: var(--kulur-text-xs, 0.6875rem);
+  color: var(--kulur-fg-muted, #9ca3af);
+}
+
+.mixes {
+  margin-top: var(--kulur-space-4, 1rem);
+}
+
+.swatchRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mixSwatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 3.5rem;
+}
+
+.mixColor {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.mixLabel {
+  font-size: 0.5625rem;
+  color: var(--kulur-fg-muted, #9ca3af);
+  letter-spacing: 0.02em;
+}
+
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: var(--kulur-space-4, 1rem);
 }

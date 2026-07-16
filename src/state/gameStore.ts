@@ -87,6 +87,7 @@ export interface GameStore {
   undoSnapshot: UndoSnapshot | null;
   discoveryFeedback: string | null;
   showOnboarding: boolean;
+  rollEmphasis: boolean;
   discoveries: DiscoveryRecord[];
   tiles: Map<string, TileRecord>;
   frontier: FrontierSet;
@@ -146,7 +147,8 @@ export type BoardRendererBridge = {
     includeCount?: boolean;
     colorCount?: number;
   }) => Promise<Blob>;
-  spawnPlacementParticles: (q: number, r: number, color: number) => void;
+    spawnPlacementParticles: (q: number, r: number, color: number) => void;
+  animatePlacement: (q: number, r: number, color: number, fromScreen?: { x: number; y: number }) => void;
 };
 
 export type ImportPreview = {
@@ -260,6 +262,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   undoSnapshot: null,
   discoveryFeedback: null,
   showOnboarding: false,
+  rollEmphasis: false,
   discoveries: [],
   tiles: new Map(),
   frontier: new FrontierSet([{ q: 0, r: 0 }]),
@@ -557,6 +560,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const renderer = get().boardRenderer;
       if (renderer) {
+        renderer.animatePlacement(q, r, recipe.packedColor);
         renderer.spawnPlacementParticles(q, r, recipe.packedColor);
         renderer.centerOn(q, r, true);
         renderer.highlightTile(q, r, 1200);
@@ -642,8 +646,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   completeOnboarding: async () => {
     await get().updateSettings({ onboardingComplete: true });
-    set({ showOnboarding: false });
+    set({ showOnboarding: false, rollEmphasis: true });
     get().boardRenderer?.centerOrigin(true);
+    window.setTimeout(() => set({ rollEmphasis: false }), 2400);
   },
 
   exportData: async () => {

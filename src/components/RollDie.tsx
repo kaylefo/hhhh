@@ -36,6 +36,7 @@ export function RollDie({ className }: RollDieProps) {
   const pendingRoll = useGameStore((s) => s.pendingRoll);
   const dieStyle = useGameStore((s) => s.settings.dieStyle);
   const roll = useGameStore((s) => s.roll);
+  const rollEmphasis = useGameStore((s) => s.rollEmphasis);
   const reducedMotion = useReducedMotion();
 
   const [spinning, setSpinning] = useState(false);
@@ -121,6 +122,7 @@ export function RollDie({ className }: RollDieProps) {
         styleClass,
         spinning ? styles.spinning : '',
         isPending ? styles.pending : '',
+        rollEmphasis && canRoll ? styles.emphasis : '',
         className ?? '',
       ]
         .filter(Boolean)

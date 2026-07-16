@@ -104,3 +104,19 @@
 .dieButton:not(:disabled):hover .label {
   color: var(--kulur-fg-primary, #f4f4f5);
 }
+
+.emphasis .scene {
+  animation: rollEmphasisPulse 1.1s ease-out 2;
+}
+
+@keyframes rollEmphasisPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0.35rem 0.65rem rgba(0, 0, 0, 0.45));
+  }
+  50% {
+    transform: scale(1.07);
+    filter: drop-shadow(0 0 0.85rem var(--result-color, var(--pending-accent, #7ac9e4)));
+  }
+}
