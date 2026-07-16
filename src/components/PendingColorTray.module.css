@@ -1,0 +1,45 @@
+.tray {
+  display: flex;
+  align-items: center;
+  gap: var(--kulur-space-3, 0.75rem);
+  margin: 0 var(--kulur-space-4, 1rem);
+  padding: var(--kulur-space-3, 0.75rem);
+  border-radius: var(--kulur-radius-lg, 0.75rem);
+  background: var(--kulur-surface-2, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--kulur-border, rgba(255, 255, 255, 0.08));
+}
+
+.swatch {
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--kulur-radius-md, 0.5rem);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  flex-shrink: 0;
+}
+
+.details {
+  min-width: 0;
+}
+
+.hex {
+  margin: 0;
+  font-size: var(--kulur-text-sm, 0.8125rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--kulur-fg-primary, #f4f4f5);
+}
+
+.formats,
+.recipe {
+  margin: 0.125rem 0 0;
+  font-size: var(--kulur-text-xs, 0.6875rem);
+  color: var(--kulur-fg-muted, #9ca3af);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recipe {
+  margin-top: 0.25rem;
+  text-transform: capitalize;
+}

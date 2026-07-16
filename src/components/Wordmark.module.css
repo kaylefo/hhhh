@@ -1,0 +1,9 @@
+.wordmark {
+  font-family: var(--kulur-font-display, 'Georgia', 'Times New Roman', serif);
+  font-size: var(--kulur-text-lg, 1.125rem);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kulur-fg-primary, #f4f4f5);
+  user-select: none;
+}

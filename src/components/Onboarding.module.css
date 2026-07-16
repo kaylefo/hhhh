@@ -1,0 +1,55 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  background: rgba(7, 8, 10, 0.88);
+}
+
+.miniBoard {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 22rem);
+  padding: 24px;
+  border-radius: var(--kulur-radius-md);
+  background: var(--kulur-surface-solid);
+  border: 1px solid var(--kulur-border);
+  box-shadow: 0 16px 48px var(--kulur-shadow);
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-weight: 750;
+  font-size: 2rem;
+  letter-spacing: -0.045em;
+  color: var(--kulur-text);
+}
+
+.body {
+  margin: 12px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--kulur-text-muted);
+}
+
+.beginButton {
+  width: 100%;
+  margin-top: 24px;
+  padding: 14px 16px;
+  border-radius: var(--kulur-radius-sm);
+  background: var(--kulur-text);
+  color: var(--kulur-bg);
+  font-weight: 600;
+  font-size: 15px;
+}
