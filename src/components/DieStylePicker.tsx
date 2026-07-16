@@ -12,18 +12,18 @@ const STYLE_LABELS: Record<DieStyleId, string> = {
 type DieStylePickerProps = {
   value: DieStyleId;
   unlocked: DieStyleId[];
-  exactColorCount: number;
+  rgbCellCount: number;
   onChange: (style: DieStyleId) => void;
 };
 
-export function DieStylePicker({ value, unlocked, exactColorCount, onChange }: DieStylePickerProps) {
+export function DieStylePicker({ value, unlocked, rgbCellCount, onChange }: DieStylePickerProps) {
   const stylesList = Object.keys(DIE_STYLE_UNLOCKS) as DieStyleId[];
 
   return (
     <div className={styles.picker} role="radiogroup" aria-label="Die style">
       {stylesList.map((id) => {
         const required = DIE_STYLE_UNLOCKS[id];
-        const isUnlocked = unlocked.includes(id) || exactColorCount >= required;
+        const isUnlocked = unlocked.includes(id) || rgbCellCount >= required;
         const selected = value === id;
         return (
           <button
@@ -40,7 +40,7 @@ export function DieStylePicker({ value, unlocked, exactColorCount, onChange }: D
             <span className={[styles.preview, styles[`style_${id}`]].join(' ')} aria-hidden="true" />
             <span className={styles.label}>{STYLE_LABELS[id]}</span>
             {!isUnlocked ? (
-              <span className={styles.requirement}>{required.toLocaleString()} colors</span>
+              <span className={styles.requirement}>{required.toLocaleString()} RGB cells</span>
             ) : null}
           </button>
         );

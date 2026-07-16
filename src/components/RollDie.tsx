@@ -16,15 +16,13 @@ const FACE_ROTATIONS = [
   { rotateX: -90, rotateY: 0 },
 ];
 
-function pickFaceColors(hexes: string[], count = 6): string[] {
-  if (hexes.length === 0) {
-    return Array.from({ length: count }, () => '#888888');
+function pickFaceColors(hexes: string[], result: string, count = 6): string[] {
+  const palette = hexes.length > 0 ? hexes : ['#888888'];
+  const faces: string[] = [result];
+  for (let i = 1; i < count; i++) {
+    faces.push(palette[(i - 1) % palette.length]!);
   }
-  const result: string[] = [];
-  for (let i = 0; i < count; i++) {
-    result.push(hexes[i % hexes.length]!);
-  }
-  return result;
+  return faces;
 }
 
 type RollDieProps = {
@@ -34,21 +32,30 @@ type RollDieProps = {
 export function RollDie({ className }: RollDieProps) {
   const interactionState = useGameStore((s) => s.interactionState);
   const pendingRoll = useGameStore((s) => s.pendingRoll);
+  const meta = useGameStore((s) => s.meta);
   const dieStyle = useGameStore((s) => s.settings.dieStyle);
   const roll = useGameStore((s) => s.roll);
   const rollEmphasis = useGameStore((s) => s.rollEmphasis);
   const reducedMotion = useReducedMotion();
 
   const [spinning, setSpinning] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const [spinOffset, setSpinOffset] = useState({ x: 0, y: 0 });
+  const [settled, setSettled] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
-  const parentHexes = useMemo(
-    () => pendingRoll?.parents.map((p) => p.hex) ?? [],
-    [pendingRoll],
+  const paletteHexes = useMemo(() => {
+    const fromParents = pendingRoll?.parents.map((p) => p.hex) ?? [];
+    const fromAnchors = meta?.foundationAnchors.map((a) => a.hex) ?? [];
+    const fromExpanded = meta?.expandedAnchors.map((a) => a.hex) ?? [];
+    return [...fromParents, ...fromAnchors, ...fromExpanded];
+  }, [pendingRoll, meta]);
+
+  const resultColor = pendingRoll?.hex ?? paletteHexes[0] ?? '#666666';
+  const faceColors = useMemo(
+    () => pickFaceColors(paletteHexes, resultColor),
+    [paletteHexes, resultColor],
   );
-  const faceColors = useMemo(() => pickFaceColors(parentHexes), [parentHexes]);
-  const resultColor = pendingRoll?.hex ?? '#666666';
 
   const canRoll = interactionState === 'idle';
   const isPending = interactionState === 'pendingPlacement';
@@ -61,58 +68,64 @@ export function RollDie({ className }: RollDieProps) {
     }
   }, []);
 
+  const beginSpin = useCallback(() => {
+    if (reducedMotion) {
+      setSettled(true);
+      return;
+    }
+    setSpinning(true);
+    setSettled(false);
+    // ≥540° total rotation on both axes; settle on front face (0,0)
+    const turnsX = 2 + randomInt(3);
+    const turnsY = 2 + randomInt(3);
+    setSpinOffset({
+      x: 360 * turnsX,
+      y: 360 * turnsY,
+    });
+    clearSpinTimeout();
+    timeoutRef.current = window.setTimeout(() => {
+      setSpinning(false);
+      setSettled(true);
+      setSpinOffset({ x: 0, y: 0 });
+      timeoutRef.current = null;
+    }, ROLL_ANIMATION_MS);
+  }, [reducedMotion, clearSpinTimeout]);
+
   const handleRoll = useCallback(async () => {
     if (!canRoll || spinning) return;
     clearSpinTimeout();
     void audioEngine.unlock();
-
-    if (reducedMotion) {
-      await roll();
-      return;
-    }
-
-    setSpinning(true);
-    setSpinOffset({
-      x: 360 * (3 + randomInt(3)),
-      y: 360 * (2 + randomInt(4)),
-    });
-
-    timeoutRef.current = window.setTimeout(() => {
-      setSpinning(false);
-      timeoutRef.current = null;
-    }, ROLL_ANIMATION_MS);
-
+    setPressed(true);
+    window.setTimeout(() => setPressed(false), reducedMotion ? 100 : 90);
     await roll();
   }, [canRoll, spinning, reducedMotion, roll, clearSpinTimeout]);
 
   useEffect(() => () => clearSpinTimeout(), [clearSpinTimeout]);
 
   useEffect(() => {
-    if (interactionState === 'idle' || interactionState === 'pendingPlacement') {
+    if (interactionState === 'rolling') {
+      beginSpin();
+      return;
+    }
+    if (interactionState === 'pendingPlacement') {
       setSpinning(false);
+      setSettled(true);
+      setSpinOffset({ x: 0, y: 0 });
+      return;
+    }
+    if (interactionState === 'idle') {
+      setSpinning(false);
+      setSettled(false);
       clearSpinTimeout();
     }
-  }, [interactionState, clearSpinTimeout]);
-
-  useEffect(() => {
-    if (interactionState !== 'rolling') return;
-    if (reducedMotion) return;
-    setSpinning(true);
-    setSpinOffset({
-      x: 360 * 4,
-      y: 360 * 3,
-    });
-    clearSpinTimeout();
-    timeoutRef.current = window.setTimeout(() => {
-      setSpinning(false);
-      timeoutRef.current = null;
-    }, ROLL_ANIMATION_MS);
-  }, [interactionState, reducedMotion, clearSpinTimeout]);
+  }, [interactionState, beginSpin, clearSpinTimeout]);
 
   const styleClass = styleClassForDie(dieStyle);
   const transform = spinning
     ? `rotateX(${spinOffset.x}deg) rotateY(${spinOffset.y}deg)`
-    : 'rotateX(-18deg) rotateY(24deg)';
+    : settled
+      ? 'rotateX(0deg) rotateY(0deg)'
+      : 'rotateX(-18deg) rotateY(24deg)';
 
   return (
     <button
@@ -121,7 +134,10 @@ export function RollDie({ className }: RollDieProps) {
         styles.dieButton,
         styleClass,
         spinning ? styles.spinning : '',
+        settled ? styles.settled : '',
         isPending ? styles.pending : '',
+        pressed ? styles.pressed : '',
+        reducedMotion ? styles.reducedMotion : '',
         rollEmphasis && canRoll ? styles.emphasis : '',
         className ?? '',
       ]
@@ -139,35 +155,87 @@ export function RollDie({ className }: RollDieProps) {
       }
     >
       <div className={styles.scene}>
-        <div
-          className={styles.dieBody}
-          style={{ transform }}
-        >
+        <div className={styles.dieBody} style={{ transform }}>
           {dieStyle === 'cube' || dieStyle === 'facet'
             ? FACE_ROTATIONS.map((rot, index) => (
                 <div
                   key={index}
-                  className={[styles.face, dieStyle === 'facet' ? styles.facetFace : ''].join(' ')}
+                  className={[
+                    styles.face,
+                    dieStyle === 'facet' ? styles.facetFace : '',
+                    index === 0 && settled ? styles.resultFace : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   style={{
-                    backgroundColor: faceColors[index],
+                    backgroundColor: index === 0 ? resultColor : faceColors[index],
                     transform: faceTransform(rot.rotateX, rot.rotateY),
                   }}
-                />
+                >
+                  {index === 0 && parentSamples(faceColors.slice(1, 4))}
+                </div>
               ))
             : null}
+
           {dieStyle === 'orb' ? (
-            <div className={styles.orb} style={{ background: orbGradient(faceColors) }} />
+            <div className={[styles.orb, spinning ? styles.orbSpinning : ''].join(' ')}>
+              <div
+                className={styles.orbCore}
+                style={{
+                  background: settled
+                    ? resultColor
+                    : orbGradient(faceColors),
+                }}
+              />
+              {faceColors.slice(0, 6).map((color, i) => (
+                <span
+                  key={i}
+                  className={styles.orbPoint}
+                  style={
+                    {
+                      '--orbit-i': i,
+                      backgroundColor: color,
+                    } as CSSProperties
+                  }
+                />
+              ))}
+            </div>
           ) : null}
+
           {dieStyle === 'halo' ? (
-            <>
+            <div className={[styles.halo, spinning ? styles.haloSpinning : ''].join(' ')}>
               <div className={styles.haloCore} style={{ backgroundColor: resultColor }} />
-              <div className={styles.haloRing} style={{ borderColor: resultColor }} />
-            </>
+              <div className={styles.haloRing}>
+                {faceColors.slice(0, 6).map((color, i) => (
+                  <span
+                    key={i}
+                    className={styles.haloSegment}
+                    style={
+                      {
+                        '--seg-i': i,
+                        backgroundColor: color,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </div>
+            </div>
           ) : null}
         </div>
       </div>
       <span className={styles.label}>{label}</span>
     </button>
+  );
+}
+
+function parentSamples(colors: string[]) {
+  if (colors.length === 0) return null;
+  return (
+    <span className={styles.samples} aria-hidden="true">
+      {colors.map((c, i) => (
+        <span key={i} className={styles.sample} style={{ backgroundColor: c }} />
+      ))}
+    </span>
   );
 }
 
@@ -195,6 +263,6 @@ function faceTransform(rotateX: number, rotateY: number): string {
 }
 
 function orbGradient(colors: string[]): string {
-  const stops = colors.map((c, i) => `${c} ${(i / (colors.length - 1)) * 100}%`).join(', ');
+  const stops = colors.map((c, i) => `${c} ${(i / Math.max(1, colors.length - 1)) * 100}%`).join(', ');
   return `radial-gradient(circle at 30% 30%, #ffffff55, transparent 40%), conic-gradient(${stops})`;
 }

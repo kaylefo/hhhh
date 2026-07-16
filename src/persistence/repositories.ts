@@ -7,7 +7,7 @@ import type {
   CameraState,
 } from '../game/types';
 import { getDatabase, chunkKey } from './database';
-import { DEFAULT_SETTINGS } from '../game/constants';
+import { CHUNK_SIZE, DEFAULT_SETTINGS, HEX_RADIUS } from '../game/constants';
 import { settingsSchema } from './schema';
 import { cloneMetaForStorage, hydrateMeta } from './metaSerialize';
 
@@ -169,6 +169,82 @@ export async function persistCamera(meta: WorldMeta, camera: CameraState): Promi
 
 export async function persistPendingRoll(meta: WorldMeta): Promise<void> {
   await saveMeta(meta);
+}
+
+export type SessionRecord = {
+  lastVisibleAt: number;
+  lastPlayTickAt: number;
+  appVersion: number;
+};
+
+export async function loadSession(): Promise<SessionRecord | null> {
+  const db = await getDatabase();
+  const raw = await db.get('session', 'active');
+  return (raw as SessionRecord | undefined) ?? null;
+}
+
+export async function saveSession(session: SessionRecord): Promise<void> {
+  const db = await getDatabase();
+  await db.put('session', session, 'active');
+}
+
+export async function loadTilesNearCamera(
+  _worldId: string,
+  camera: CameraState,
+  screenWidth = 390,
+  screenHeight = 844,
+  chunkMargin = 1,
+): Promise<Map<string, TileRecord>> {
+  const db = await getDatabase();
+  const all = await db.getAll('chunks');
+  const tiles = new Map<string, TileRecord>();
+
+  const zoom = Math.max(0.12, camera.zoom);
+  const halfW = (screenWidth * 0.5) / zoom;
+  const halfH = (screenHeight * 0.5) / zoom;
+  const minX = -camera.worldX - halfW - HEX_RADIUS * CHUNK_SIZE * chunkMargin;
+  const maxX = -camera.worldX + halfW + HEX_RADIUS * CHUNK_SIZE * chunkMargin;
+  const minY = -camera.worldY - halfH - HEX_RADIUS * CHUNK_SIZE * chunkMargin;
+  const maxY = -camera.worldY + halfH + HEX_RADIUS * CHUNK_SIZE * chunkMargin;
+
+  const minChunkQ = Math.floor(minX / (HEX_RADIUS * Math.sqrt(3) * CHUNK_SIZE)) - chunkMargin;
+  const maxChunkQ = Math.floor(maxX / (HEX_RADIUS * Math.sqrt(3) * CHUNK_SIZE)) + chunkMargin;
+  const minChunkR = Math.floor(minY / (HEX_RADIUS * 1.5 * CHUNK_SIZE)) - chunkMargin;
+  const maxChunkR = Math.floor(maxY / (HEX_RADIUS * 1.5 * CHUNK_SIZE)) + chunkMargin;
+
+  for (const tile of all) {
+    if (!tile) continue;
+    const chunkQ = Math.floor(tile.q / CHUNK_SIZE);
+    const chunkR = Math.floor(tile.r / CHUNK_SIZE);
+    if (
+      chunkQ >= minChunkQ &&
+      chunkQ <= maxChunkQ &&
+      chunkR >= minChunkR &&
+      chunkR <= maxChunkR
+    ) {
+      tiles.set(`${tile.q},${tile.r}`, tile);
+    }
+  }
+
+  // Always include origin neighborhood so first-ring frontier works after reload
+  if (tiles.size === 0) {
+    for (const tile of all) {
+      if (tile) tiles.set(`${tile.q},${tile.r}`, tile);
+    }
+  }
+
+  return tiles;
+}
+
+export async function loadRemainingTiles(
+  worldId: string,
+  alreadyLoaded: Map<string, TileRecord>,
+): Promise<Map<string, TileRecord>> {
+  const all = await loadAllTiles(worldId);
+  for (const [key, tile] of alreadyLoaded) {
+    all.set(key, tile);
+  }
+  return all;
 }
 
 export async function getAllTilesForExport(): Promise<TileRecord[]> {

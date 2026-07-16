@@ -30,6 +30,8 @@ export type BoardCanvasProps = {
     }) => Promise<Blob>;
     spawnPlacementParticles: (q: number, r: number, color: number) => void;
     animatePlacement: (q: number, r: number, color: number, fromScreen?: { x: number; y: number }) => void;
+    revealTileIfNeeded: (q: number, r: number) => void;
+    fitAllTiles: (tiles: Iterable<TileRecord>, animated?: boolean) => void;
   }) => void;
 };
 
@@ -122,6 +124,8 @@ export function BoardCanvas({
         captureViewport: (opts) => renderer.captureViewport(opts),
         spawnPlacementParticles: (q, r, color) => renderer.spawnPlacementParticles(q, r, color),
         animatePlacement: (q, r, color, from) => renderer.animatePlacement(q, r, color, from),
+        revealTileIfNeeded: (q, r) => renderer.revealTileIfNeeded(q, r),
+        fitAllTiles: (tiles, animated) => renderer.fitAllTiles(tiles, animated),
       });
 
       const observer = new ResizeObserver((entries) => {

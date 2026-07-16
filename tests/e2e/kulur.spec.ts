@@ -263,4 +263,72 @@ test.describe('Kulur E2E scenarios', () => {
     await page.waitForTimeout(500);
     await expect(page.locator('#root')).toBeAttached();
   });
+
+  test('21. pending color persists across reload', async ({ page }) => {
+    await gotoApp(page);
+    await dismissOnboardingIfPresent(page);
+    const rollButton = page.getByRole('button', { name: 'Roll die' });
+    await expect(rollButton).toBeVisible();
+
+    await rollButton.click();
+    await page.waitForTimeout(900);
+    await expect(rollButton).toBeEnabled({ timeout: 5000 });
+
+    await rollButton.click();
+    await page.waitForTimeout(900);
+    const pending = page.getByRole('button', { name: 'Place pending color on board' });
+    await expect(pending).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await dismissOnboardingIfPresent(page);
+    await expect(page.getByRole('button', { name: 'Place pending color on board' })).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.getByText('PLACE', { exact: true })).toBeVisible();
+  });
+
+  test('22. sound setting toggles and persists', async ({ page }) => {
+    await gotoApp(page);
+    await dismissOnboardingIfPresent(page);
+    await page.getByRole('banner').getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    const sound = page.getByRole('switch', { name: 'Sound' });
+    await expect(sound).toBeVisible();
+    await sound.uncheck();
+    await expect(sound).not.toBeChecked();
+    await page.waitForTimeout(400);
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(400);
+    await dismissOnboardingIfPresent(page);
+    await page.getByRole('banner').getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await expect(page.getByRole('switch', { name: 'Sound' })).not.toBeChecked();
+  });
+
+  test('23. erase requires typing ERASE KULUR', async ({ page }) => {
+    await gotoApp(page);
+    await dismissOnboardingIfPresent(page);
+    await page.getByRole('banner').getByRole('button', { name: 'Open menu' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Erase board' }).click();
+    const confirm = page.getByRole('button', { name: 'Erase', exact: true });
+    await expect(confirm).toBeDisabled();
+    await page.getByRole('textbox').fill('ERASE KULUR');
+    await expect(confirm).toBeEnabled();
+  });
+
+  test('24. no uncaught page errors during basic play', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    await gotoApp(page);
+    await dismissOnboardingIfPresent(page);
+    const rollButton = page.getByRole('button', { name: 'Roll die' });
+    if (await rollButton.isVisible()) {
+      await rollButton.click();
+      await page.waitForTimeout(900);
+    }
+    expect(errors).toEqual([]);
+  });
 });
