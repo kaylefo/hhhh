@@ -1,0 +1,8 @@
+.app-shell {
+  position: fixed;
+  inset: 0;
+}
+
+.board-layer canvas {
+  display: block;
+}

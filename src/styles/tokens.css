@@ -1,0 +1,22 @@
+:root {
+  --kulur-bg: #07080A;
+  --kulur-surface: rgba(17, 19, 24, 0.86);
+  --kulur-surface-solid: #111318;
+  --kulur-surface-raised: #181B21;
+  --kulur-border: rgba(255, 255, 255, 0.10);
+  --kulur-border-strong: rgba(255, 255, 255, 0.18);
+  --kulur-text: #F5F7FA;
+  --kulur-text-muted: #9EA4AF;
+  --kulur-danger: #FF5A68;
+  --kulur-shadow: rgba(0, 0, 0, 0.36);
+  --kulur-accent: var(--pending-accent, #7AC9E4);
+  --kulur-radius-sm: 10px;
+  --kulur-radius-md: 16px;
+  --kulur-radius-lg: 20px;
+  --kulur-radius-sheet: 24px;
+  --kulur-font: ui-rounded, "SF Pro Rounded", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
