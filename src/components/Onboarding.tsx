@@ -56,6 +56,7 @@ export function Onboarding({ className }: OnboardingProps) {
           interactionEnabled={false}
           onTileTap={() => {}}
           onFrontierTap={() => {}}
+          onEmptyTap={() => {}}
           onPanChange={() => {}}
           getSettings={() => ({ ...DEFAULT_SETTINGS, reducedMotion: true })}
         />

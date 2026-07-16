@@ -109,6 +109,31 @@ export async function saveUndo(snapshot: UndoSnapshot | null): Promise<void> {
   else await db.delete('undo', 'current');
 }
 
+export async function persistUndoAtomic(
+  meta: WorldMeta,
+  snapshot: UndoSnapshot,
+  exactPages: Map<number, Uint8Array>,
+  rgbData: Uint8Array,
+): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction(
+    ['meta', 'chunks', 'discoveries', 'exactBitsetPages', 'rgbCellBitset', 'undo'],
+    'readwrite',
+  );
+  meta.updatedAt = Date.now();
+  await tx.objectStore('meta').put(cloneMetaForStorage(meta), 'world');
+  await tx.objectStore('chunks').delete(chunkKey(meta.worldId, snapshot.tile.q, snapshot.tile.r));
+  for (const packed of snapshot.discoveriesAdded) {
+    await tx.objectStore('discoveries').delete(packed);
+  }
+  for (const [idx, page] of exactPages) {
+    await tx.objectStore('exactBitsetPages').put(page, idx);
+  }
+  await tx.objectStore('rgbCellBitset').put(rgbData, 'main');
+  await tx.objectStore('undo').delete('current');
+  await tx.done;
+}
+
 export async function persistPlacementAtomic(
   meta: WorldMeta,
   tile: TileRecord,
@@ -173,7 +198,7 @@ export async function replaceWorldData(
   await tx.objectStore('discoveries').clear();
   await tx.objectStore('exactBitsetPages').clear();
   await tx.objectStore('undo').clear();
-  await tx.objectStore('meta').put(meta, 'world');
+  await tx.objectStore('meta').put(cloneMetaForStorage(meta), 'world');
   await tx.objectStore('settings').put(settings, 'app');
   for (const tile of tiles) {
     await tx.objectStore('chunks').put(tile, chunkKey(meta.worldId, tile.q, tile.r));

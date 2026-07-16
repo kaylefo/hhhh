@@ -40,6 +40,7 @@ import {
 export type BoardRendererOptions = {
   onTileTap: (q: number, r: number) => void;
   onFrontierTap: (q: number, r: number) => void;
+  onEmptyTap: () => void;
   onPanChange: (camera: CameraState) => void;
   getSettings: () => Settings;
 };
@@ -230,6 +231,21 @@ export class BoardRenderer {
       this.app.renderer.render({ container: overlay, target: texture, clear: false });
       overlay.destroy({ children: true });
     }
+
+    const wordmark = new Text({
+      text: 'Kulur',
+      style: {
+        fill: 0xf5f7fa,
+        fontSize: Math.max(18, Math.round(options.width * 0.028)),
+        fontFamily: 'ui-rounded, system-ui, sans-serif',
+        fontWeight: '700',
+      },
+    });
+    wordmark.position.set(options.width - wordmark.width - 24, options.height - wordmark.height - 24);
+    const markLayer = new Container();
+    markLayer.addChild(wordmark);
+    this.app.renderer.render({ container: markLayer, target: texture, clear: false });
+    markLayer.destroy({ children: true });
 
     this.screenWidth = prevWidth;
     this.screenHeight = prevHeight;
@@ -535,7 +551,9 @@ export class BoardRenderer {
     }
     if (this.tiles.has(key)) {
       this.options.onTileTap(axial.q, axial.r);
+      return;
     }
+    this.options.onEmptyTap();
   }
 
   spawnPlacementParticles(q: number, r: number, color: number): void {

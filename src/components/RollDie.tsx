@@ -4,6 +4,7 @@ import type { DieStyleId } from '../game/types';
 import { randomInt } from '../game/random';
 import { useGameStore } from '../state/gameStore';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { audioEngine } from '../audio/AudioEngine';
 import styles from './RollDie.module.css';
 
 const FACE_ROTATIONS = [
@@ -62,6 +63,7 @@ export function RollDie({ className }: RollDieProps) {
   const handleRoll = useCallback(async () => {
     if (!canRoll || spinning) return;
     clearSpinTimeout();
+    void audioEngine.unlock();
 
     if (reducedMotion) {
       await roll();

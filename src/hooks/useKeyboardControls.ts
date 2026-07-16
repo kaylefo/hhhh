@@ -21,6 +21,7 @@ export function useKeyboardControls(enabled = true): void {
   const closeSheet = useGameStore((s) => s.closeSheet);
   const copyToClipboard = useGameStore((s) => s.copyToClipboard);
   const centerOrigin = useGameStore((s) => s.centerOrigin);
+  const boardRenderer = useGameStore((s) => s.boardRenderer);
 
   useEffect(() => {
     if (!enabled) return;
@@ -64,6 +65,34 @@ export function useKeyboardControls(enabled = true): void {
         setView('board');
         return;
       }
+      if (key === 'g' || key === 'G') {
+        event.preventDefault();
+        setView('gamut');
+        return;
+      }
+      if (key === 's' || key === 'S') {
+        event.preventDefault();
+        setView('settings');
+        return;
+      }
+      if (key === '0') {
+        event.preventDefault();
+        centerOrigin();
+        return;
+      }
+      if (key === '+' || key === '=') {
+        event.preventDefault();
+        const camera = boardRenderer?.getCamera?.();
+        if (camera) boardRenderer?.setCamera({ ...camera, zoom: Math.min(camera.zoom * 1.15, 3.5) });
+        return;
+      }
+      if (key === '-' || key === '_') {
+        event.preventDefault();
+        const camera = boardRenderer?.getCamera?.();
+        if (camera) boardRenderer?.setCamera({ ...camera, zoom: Math.max(camera.zoom / 1.15, 0.12) });
+        return;
+      }
+
       if (key === '2') {
         event.preventDefault();
         setView('gamut');
@@ -114,6 +143,7 @@ export function useKeyboardControls(enabled = true): void {
     openMenu,
     closeSheet,
     copyToClipboard,
+    boardRenderer,
     centerOrigin,
   ]);
 }

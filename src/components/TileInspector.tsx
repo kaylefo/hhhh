@@ -53,24 +53,26 @@ export function TileInspector({ className }: TileInspectorProps) {
 
   if (!selectedTile || !inspectorOpen || !color) return null;
 
+  const placedAt = new Date(selectedTile.placedAt).toLocaleString();
+  const sourceKind = selectedTile.recipe.isFoundation
+    ? 'Foundation anchor'
+    : selectedTile.recipe.isPaletteExpansion
+      ? 'Palette expansion'
+      : 'Mixed roll';
+
   const copyField = (text: string, label: string) => {
     void copyToClipboard(text, label);
   };
 
   return (
-    <div className={styles.backdrop} onClick={closeSheet} role="presentation">
-      <section
-        className={[styles.sheet, className].filter(Boolean).join(' ')}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Tile inspector"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <section className={[styles.sheet, className].filter(Boolean).join(' ')} aria-label="Tile inspector">
         <header className={styles.header}>
           <div className={styles.preview} style={{ backgroundColor: color.hex }} aria-hidden="true" />
           <div>
             <h2 className={styles.title}>Tile ({selectedTile.q}, {selectedTile.r})</h2>
-            <p className={styles.subtitle}>Roll #{selectedTile.rollIndex + 1}</p>
+            <p className={styles.subtitle}>
+              Roll #{selectedTile.rollIndex + 1} · {placedAt} · {sourceKind}
+            </p>
           </div>
           <button type="button" className={styles.iconButton} onClick={closeSheet} aria-label="Close inspector">
             <CloseIcon />
@@ -131,8 +133,7 @@ export function TileInspector({ className }: TileInspectorProps) {
             Undo placement
           </button>
         </footer>
-      </section>
-    </div>
+    </section>
   );
 }
 

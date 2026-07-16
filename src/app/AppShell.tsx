@@ -8,9 +8,10 @@ import { StatsView } from '../components/StatsView';
 import { SettingsView } from '../components/SettingsView';
 import { TileInspector } from '../components/TileInspector';
 import { Onboarding } from '../components/Onboarding';
-import { ToastRegion } from '../components/ToastRegion';
+import { LiveRegion } from '../components/LiveRegion';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PendingColorTray } from '../components/PendingColorTray';
+import { ToastRegion } from '../components/ToastRegion';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { setupNavigation } from './navigation';
 import { audioEngine } from '../audio/AudioEngine';
@@ -78,11 +79,13 @@ export function AppShell() {
   const handleFrontierTap = useCallback(
     (q: number, r: number) => {
       void placeAt(q, r);
-      if (settings.sound) audioEngine.playPlacement(pendingRoll?.packedColor ?? 0, 1);
-      if (settings.haptics && navigator.vibrate) navigator.vibrate(14);
     },
-    [placeAt, settings, pendingRoll],
+    [placeAt],
   );
+
+  const handleEmptyTap = useCallback(() => {
+    closeSheet();
+  }, [closeSheet]);
 
   const getSettings = useCallback(() => settings, [settings]);
 
@@ -117,6 +120,7 @@ export function AppShell() {
           interactionEnabled={boardInteraction}
           onTileTap={handleTileTap}
           onFrontierTap={handleFrontierTap}
+          onEmptyTap={handleEmptyTap}
           onPanChange={persistCameraDebounced}
           getSettings={getSettings}
           onRendererReady={onRendererReady}
@@ -196,7 +200,7 @@ export function AppShell() {
         <ConfirmDialog
           open
           title="Import Kulur"
-          message={`Replace current board with ${importPreview.tileCount} tiles and ${importPreview.exactColors} exact colors?`}
+          message={`Replace current board with ${importPreview.tileCount} tiles, ${importPreview.exactColors} exact colors, created ${new Date(importPreview.createdAt).toLocaleDateString()}?`}
           confirmLabel="Import"
           onConfirm={() => void confirmImport()}
           onCancel={cancelImport}
@@ -216,6 +220,7 @@ export function AppShell() {
       ) : null}
 
       <ToastRegion />
+      <LiveRegion />
     </div>
   );
 }

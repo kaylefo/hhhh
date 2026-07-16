@@ -50,6 +50,7 @@ import {
   loadUndo,
   saveUndo,
   persistPlacementAtomic,
+  persistUndoAtomic,
   persistPendingRoll,
   persistCamera,
   getAllTilesForExport,
@@ -58,9 +59,10 @@ import {
 } from '../persistence/repositories';
 import { hydrateMeta } from '../persistence/metaSerialize';
 import { clearDatabase } from '../persistence/database';
+import { audioEngine } from '../audio/AudioEngine';
 import {
   buildExportPayload,
-  compressExport,
+  compressExportAsync,
   decompressImport,
   exportFilename,
   downloadBlob,
@@ -123,19 +125,28 @@ export interface GameStore {
   dismissMilestone: () => void;
   addToast: (text: string, type?: ToastMessage['type']) => void;
   announce: (text: string) => void;
+  goToDiscovery: (discovery: DiscoveryRecord) => void;
+  shareCurrentView: (options: ShareImageOptions) => Promise<void>;
 }
+
+export type ShareImageOptions = {
+  format: 'portrait' | 'square';
+  includeCount: boolean;
+};
 
 export type BoardRendererBridge = {
   centerOrigin: (animated?: boolean) => void;
   centerOn: (q: number, r: number, animated?: boolean) => void;
   highlightTile: (q: number, r: number, durationMs: number) => void;
   setCamera: (camera: CameraState) => void;
+  getCamera: () => CameraState;
   captureViewport: (opts: {
     width: number;
     height: number;
     includeCount?: boolean;
     colorCount?: number;
   }) => Promise<Blob>;
+  spawnPlacementParticles: (q: number, r: number, color: number) => void;
 };
 
 export type ImportPreview = {
@@ -449,6 +460,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         recentRolls: [...state.recentRolls.slice(-31), recipe.packedColor],
       });
       get().announce(`Rolled ${recipe.hex}. Choose an open hex.`);
+
+      const { settings } = get();
+      if (settings.sound) void audioEngine.playRoll(recipe.packedColor);
+      if (settings.haptics && navigator.vibrate) navigator.vibrate(8);
     } catch (err) {
       set({ interactionState: 'idle', pendingRoll: null });
       get().addToast(err instanceof Error ? err.message : 'Roll failed', 'error');
@@ -542,8 +557,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const renderer = get().boardRenderer;
       if (renderer) {
+        renderer.spawnPlacementParticles(q, r, recipe.packedColor);
         renderer.centerOn(q, r, true);
         renderer.highlightTile(q, r, 1200);
+      }
+
+      const { settings } = get();
+      const placedTile = get().tiles.get(axialKey({ q, r }));
+      const neighborCount = placedTile?.neighborCount ?? 0;
+      if (settings.sound) {
+        if (result.isPaletteExpansion) void audioEngine.playPaletteExpansion();
+        else void audioEngine.playPlacement(recipe.packedColor, neighborCount);
+      }
+      if (settings.haptics && navigator.vibrate) {
+        if (result.isPaletteExpansion) navigator.vibrate([14, 30, 14, 30, 24]);
+        else if (result.newExactCount >= 5) navigator.vibrate([12, 24, 20]);
+        else navigator.vibrate(14);
       }
     } catch (err) {
       const pending = get().pendingRoll;
@@ -591,8 +620,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       inspectorOpen: false,
     });
 
-    await saveMeta(meta);
-    await saveUndo(null);
+    await persistUndoAtomic(
+      meta,
+      snapshot,
+      board.exactBitset.getPages(),
+      board.rgbBitset.getData(),
+    );
+
+    const { settings } = get();
+    if (settings.sound) void audioEngine.playUndo();
+    if (settings.haptics && navigator.vibrate) navigator.vibrate(10);
+
     get().announce('Placement undone. The same color is ready to place.');
   },
 
@@ -614,7 +652,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const tiles = await getAllTilesForExport();
     const discoveries = await getAllDiscoveriesForExport();
     const payload = buildExportPayload(meta, settings, tiles, discoveries);
-    const compressed = compressExport(payload);
+    const compressed = await compressExportAsync(payload);
     const blob = new Blob([compressed], { type: 'application/x-kulur' });
     downloadBlob(blob, exportFilename());
     get().addToast('Export complete', 'success');
@@ -735,6 +773,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
         await persistCamera(meta, camera);
       }
     }, 250);
+  },
+
+  goToDiscovery: (discovery) => {
+    set({ view: 'board', menuOpen: false, inspectorOpen: false, selectedTile: null });
+    const { q, r } = discovery.coordinate;
+    const tile = get().getTileAt(q, r);
+    get().boardRenderer?.centerOn(q, r, true);
+    get().boardRenderer?.highlightTile(q, r, 1200);
+    if (tile) {
+      set({ selectedTile: tile, inspectorOpen: true });
+    }
+    if (typeof window !== 'undefined') {
+      const base = import.meta.env.BASE_URL;
+      window.history.pushState({ view: 'board' }, '', base);
+    }
+  },
+
+  shareCurrentView: async ({ format, includeCount }) => {
+    const renderer = get().boardRenderer;
+    if (!renderer) {
+      get().addToast('Board not ready', 'error');
+      return;
+    }
+    const width = format === 'portrait' ? 1080 : 2048;
+    const height = format === 'portrait' ? 1920 : 2048;
+    try {
+      const blob = await renderer.captureViewport({
+        width,
+        height,
+        includeCount,
+        colorCount: get().exactColorCount,
+      });
+      const filename = `Kulur-${format}.png`;
+      const file = new File([blob], filename, { type: 'image/png' });
+      if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Kulur' });
+        return;
+      }
+      downloadBlob(blob, filename);
+      get().addToast('Image saved', 'success');
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      get().addToast('Could not generate image', 'error');
+    }
   },
 }));
 
