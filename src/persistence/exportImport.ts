@@ -34,6 +34,22 @@ export function compressExport(payload: ExportPayload): Uint8Array {
   return zlibSync(strToU8(json));
 }
 
+export function compressExportAsync(payload: ExportPayload): Promise<Uint8Array> {
+  const json = JSON.stringify(payload);
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('../workers/exportWorker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (event: MessageEvent<Uint8Array>) => {
+      resolve(event.data);
+      worker.terminate();
+    };
+    worker.onerror = (error) => {
+      reject(error);
+      worker.terminate();
+    };
+    worker.postMessage({ json });
+  });
+}
+
 export function decompressImport(data: Uint8Array): ExportPayload {
   const json = new TextDecoder().decode(unzlibSync(data));
   const parsed = JSON.parse(json) as unknown;

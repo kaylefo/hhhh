@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DiscoveryRecord } from '../game/types';
+import { textColorForBackground } from '../game/color/contrast';
 import { useGameStore } from '../state/gameStore';
 import styles from './SwatchGrid.module.css';
 
@@ -13,13 +14,23 @@ type SwatchGridProps = {
 };
 
 export function SwatchGrid({ discoveries, className }: SwatchGridProps) {
-  const copyToClipboard = useGameStore((s) => s.copyToClipboard);
+  const goToDiscovery = useGameStore((s) => s.goToDiscovery);
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerWidth, setContainerWidth] = useState(320);
+  const [selected, setSelected] = useState<DiscoveryRecord | null>(null);
 
   const sorted = useMemo(
-    () => [...discoveries].sort((a, b) => b.firstSeenAt - a.firstSeenAt),
+    () =>
+      [...discoveries].sort((a, b) => {
+        const aNeutral = a.oklch.C < 0.03;
+        const bNeutral = b.oklch.C < 0.03;
+        if (aNeutral !== bNeutral) return aNeutral ? 1 : -1;
+        if (aNeutral && bNeutral) return b.oklch.L - a.oklch.L;
+        if (a.oklch.h !== b.oklch.h) return a.oklch.h - b.oklch.h;
+        if (a.oklch.C !== b.oklch.C) return b.oklch.C - a.oklch.C;
+        return b.oklch.L - a.oklch.L;
+      }),
     [discoveries],
   );
 
@@ -59,34 +70,54 @@ export function SwatchGrid({ discoveries, className }: SwatchGridProps) {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className={[styles.grid, className].filter(Boolean).join(' ')}
-      onScroll={onScroll}
-      role="list"
-      aria-label="Discovery swatches"
-    >
-      <div className={styles.spacer} style={{ height: totalHeight }}>
-        {visible.map(({ item, index }) => {
-          const row = Math.floor(index / columns);
-          const col = index % columns;
-          const top = row * (CELL_SIZE + GAP);
-          const left = col * (CELL_SIZE + GAP);
-          return (
-            <button
-              key={item.packed}
-              type="button"
-              className={styles.cell}
-              style={{ transform: `translate(${left}px, ${top}px)`, backgroundColor: item.hex }}
-              onClick={() => void copyToClipboard(item.hex, 'hex')}
-              aria-label={`Copy ${item.hex}`}
-              title={item.hex.toUpperCase()}
-              role="listitem"
-            />
-          );
-        })}
+    <>
+      <div
+        ref={containerRef}
+        className={[styles.grid, className].filter(Boolean).join(' ')}
+        onScroll={onScroll}
+        role="list"
+        aria-label="Discovery swatches"
+      >
+        <div className={styles.spacer} style={{ height: totalHeight }}>
+          {visible.map(({ item, index }) => {
+            const row = Math.floor(index / columns);
+            const col = index % columns;
+            const top = row * (CELL_SIZE + GAP);
+            const left = col * (CELL_SIZE + GAP);
+            const textColor = textColorForBackground(item.packed);
+            return (
+              <button
+                key={item.packed}
+                type="button"
+                className={styles.cell}
+                style={{
+                  transform: `translate(${left}px, ${top}px)`,
+                  backgroundColor: item.hex,
+                  color: textColor,
+                }}
+                onClick={() => setSelected(item)}
+                aria-label={`${item.hex.toUpperCase()} discovery`}
+                role="listitem"
+              >
+                <span className={styles.hexLabel}>{item.hex.slice(1).toUpperCase()}</span>
+              </button>
+            );
+          })}
+        </div>
+        {sorted.length === 0 ? <p className={styles.empty}>No discoveries yet.</p> : null}
       </div>
-      {sorted.length === 0 ? <p className={styles.empty}>No discoveries yet.</p> : null}
-    </div>
+
+      {selected ? (
+        <div className={styles.detailBar}>
+          <span>{selected.hex.toUpperCase()}</span>
+          <button type="button" onClick={() => goToDiscovery(selected)}>
+            Go to tile
+          </button>
+          <button type="button" onClick={() => setSelected(null)}>
+            Close
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }

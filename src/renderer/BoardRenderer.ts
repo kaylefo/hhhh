@@ -4,11 +4,11 @@ import {
   Graphics,
   RenderTexture,
   Text,
-  type FederatedPointerEvent,
 } from 'pixi.js';
 import {
   CHUNK_SIZE,
   HEX_RADIUS,
+  PLACEMENT_ANIMATION_MS,
   ZOOM_DETAIL_THRESHOLD,
 } from '@/game/constants';
 import type {
@@ -18,7 +18,8 @@ import type {
   Settings,
   TileRecord,
 } from '@/game/types';
-import { axialFromWorld, axialKey } from '@/game/hex/axial';
+import { axialFromWorld, axialKey, hexCorners } from '@/game/hex/axial';
+import { formatHex } from '@/game/color/srgb';
 import { CameraController } from './CameraController';
 import { ChunkMesh, chunkWorldBounds, collectChunkKeys } from './ChunkMesh';
 import { ChunkTextureCache } from './ChunkTextureCache';
@@ -41,6 +42,7 @@ import {
 export type BoardRendererOptions = {
   onTileTap: (q: number, r: number) => void;
   onFrontierTap: (q: number, r: number) => void;
+  onEmptyTap: () => void;
   onPanChange: (camera: CameraState) => void;
   getSettings: () => Settings;
 };
@@ -48,6 +50,17 @@ export type BoardRendererOptions = {
 type HighlightState = {
   key: string;
   until: number;
+};
+
+type PlacementFx = {
+  q: number;
+  r: number;
+  color: number;
+  startTime: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
 };
 
 const OVERVIEW_TEXTURE_SCALE = 0.35;
@@ -77,21 +90,30 @@ export class BoardRenderer {
   private dirty = true;
   private detailMode = true;
   private tickerBound: (ticker: { deltaMS: number; lastTime: number }) => void;
-  private pointerDown: { x: number; y: number; time: number } | null = null;
+  private pointerGesture: { x: number; y: number; time: number; dragged: boolean } | null = null;
   private screenWidth = 1;
   private screenHeight = 1;
+  private placementFx: PlacementFx | null = null;
+  private fxLayer = new Container();
+  private fxGraphics = new Graphics();
+  private scaleGraphics = new Graphics();
 
   constructor(app: Application, options: BoardRendererOptions) {
     this.app = app;
     this.options = options;
 
     this.world.label = 'world';
+    this.world.eventMode = 'none';
     this.detailLayer.label = 'detail';
+    this.detailLayer.eventMode = 'none';
     this.overviewLayer.label = 'overview';
+    this.overviewLayer.eventMode = 'none';
     this.world.addChild(this.detailLayer, this.overviewLayer);
 
     this.frontierRenderer = new FrontierRenderer(this.outlineShader);
     this.particleRenderer = new ParticleRenderer();
+    this.frontierRenderer.container.eventMode = 'none';
+    this.particleRenderer.container.eventMode = 'none';
     this.world.addChild(this.frontierRenderer.container, this.particleRenderer.container);
 
     this.cameraController = new CameraController(
@@ -103,6 +125,13 @@ export class BoardRenderer {
     );
 
     app.stage.addChild(this.world);
+    this.fxLayer.label = 'placement-fx';
+    this.fxLayer.eventMode = 'none';
+    this.fxGraphics.eventMode = 'none';
+    this.scaleGraphics.eventMode = 'none';
+    this.fxLayer.addChild(this.fxGraphics);
+    this.world.addChild(this.scaleGraphics);
+    app.stage.addChild(this.fxLayer);
     this.bindEvents();
 
     this.tickerBound = (ticker) => this.onTick(ticker.deltaMS);
@@ -227,6 +256,21 @@ export class BoardRenderer {
       overlay.destroy({ children: true });
     }
 
+    const wordmark = new Text({
+      text: 'Kulur',
+      style: {
+        fill: 0xf5f7fa,
+        fontSize: Math.max(18, Math.round(options.width * 0.028)),
+        fontFamily: 'ui-rounded, system-ui, sans-serif',
+        fontWeight: '700',
+      },
+    });
+    wordmark.position.set(options.width - wordmark.width - 24, options.height - wordmark.height - 24);
+    const markLayer = new Container();
+    markLayer.addChild(wordmark);
+    this.app.renderer.render({ container: markLayer, target: texture, clear: false });
+    markLayer.destroy({ children: true });
+
     this.screenWidth = prevWidth;
     this.screenHeight = prevHeight;
     this.applyCameraTransform();
@@ -252,6 +296,7 @@ export class BoardRenderer {
     this.frontierRenderer.destroy();
     this.particleRenderer.destroy();
     this.cameraController.destroy();
+    this.fxLayer.destroy({ children: true });
     this.tileShader.destroy(true);
     this.outlineShader.destroy(true);
     this.world.destroy({ children: true });
@@ -279,10 +324,12 @@ export class BoardRenderer {
       uMaterial: materialToUniform(this.material),
       uColorPatterns: this.colorPatterns ? 1 : 0,
       uReducedMotion: this.reducedMotion ? 1 : 0,
+      uZoom: this.cameraController.getCamera().zoom,
     });
 
     this.frontierRenderer.update(timeSec, this.reducedMotion, this.pendingColor != null ? 1.15 : 1);
     if (this.particleRenderer.update(deltaMs)) animating = true;
+    if (this.updatePlacementFx(now)) animating = true;
 
     if (cameraChanged || this.dirty || animating || !this.reducedMotion) {
       this.renderVisibleChunks();
@@ -448,25 +495,27 @@ export class BoardRenderer {
   private bindEvents(): void {
     const canvas = this.app.canvas;
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
-    canvas.addEventListener('pointerdown', this.onPointerDown);
-    canvas.addEventListener('pointermove', this.onPointerMove);
-    canvas.addEventListener('pointerup', this.onPointerUp);
-    canvas.addEventListener('pointercancel', this.onPointerUp);
-    canvas.addEventListener('pointerleave', this.onPointerUp);
-    this.app.stage.eventMode = 'static';
-    this.app.stage.hitArea = this.app.screen;
-    this.app.stage.on('pointertap', this.onStageTap);
+    canvas.addEventListener('pointerdown', this.onCanvasPointerDown);
+    canvas.addEventListener('pointermove', this.onCanvasPointerMove);
+    canvas.addEventListener('pointerup', this.onCanvasPointerUp);
+    canvas.addEventListener('pointercancel', this.onCanvasPointerUp);
   }
 
   private unbindEvents(): void {
     const canvas = this.app.canvas;
     canvas.removeEventListener('wheel', this.onWheel);
-    canvas.removeEventListener('pointerdown', this.onPointerDown);
-    canvas.removeEventListener('pointermove', this.onPointerMove);
-    canvas.removeEventListener('pointerup', this.onPointerUp);
-    canvas.removeEventListener('pointercancel', this.onPointerUp);
-    canvas.removeEventListener('pointerleave', this.onPointerUp);
-    this.app.stage.off('pointertap', this.onStageTap);
+    canvas.removeEventListener('pointerdown', this.onCanvasPointerDown);
+    canvas.removeEventListener('pointermove', this.onCanvasPointerMove);
+    canvas.removeEventListener('pointerup', this.onCanvasPointerUp);
+    canvas.removeEventListener('pointercancel', this.onCanvasPointerUp);
+  }
+
+  private clientToGlobal(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.app.canvas.getBoundingClientRect();
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
   }
 
   private onWheel = (event: WheelEvent): void => {
@@ -477,37 +526,49 @@ export class BoardRenderer {
     this.invalidate();
   };
 
-  private onPointerDown = (event: PointerEvent): void => {
+  private onCanvasPointerDown = (event: PointerEvent): void => {
     if (!this.interactionEnabled) return;
-    const rect = this.app.canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    this.cameraController.onPointerDown(event.pointerId, x, y);
-    this.pointerDown = { x, y, time: performance.now() };
+    const global = this.clientToGlobal(event.clientX, event.clientY);
+    this.cameraController.onPointerDown(event.pointerId, global.x, global.y);
+    this.app.canvas.setPointerCapture(event.pointerId);
+    this.pointerGesture = {
+      x: global.x,
+      y: global.y,
+      time: performance.now(),
+      dragged: false,
+    };
     this.invalidate();
   };
 
-  private onPointerMove = (event: PointerEvent): void => {
+  private onCanvasPointerMove = (event: PointerEvent): void => {
     if (!this.interactionEnabled) return;
-    const rect = this.app.canvas.getBoundingClientRect();
-    this.cameraController.onPointerMove(event.pointerId, event.clientX - rect.left, event.clientY - rect.top);
+    const global = this.clientToGlobal(event.clientX, event.clientY);
+    this.cameraController.onPointerMove(event.pointerId, global.x, global.y);
+    if (this.pointerGesture && !this.pointerGesture.dragged) {
+      const dx = global.x - this.pointerGesture.x;
+      const dy = global.y - this.pointerGesture.y;
+      if (Math.hypot(dx, dy) >= 8) {
+        this.pointerGesture.dragged = true;
+      }
+    }
     this.invalidate();
   };
 
-  private onPointerUp = (event: PointerEvent): void => {
+  private onCanvasPointerUp = (event: PointerEvent): void => {
+    const global = this.clientToGlobal(event.clientX, event.clientY);
     this.cameraController.onPointerUp(event.pointerId);
+    this.handleCanvasTap(global.x, global.y);
     this.invalidate();
   };
 
-  private onStageTap = (event: FederatedPointerEvent): void => {
-    if (!this.interactionEnabled || !this.pointerDown) return;
-    const elapsed = performance.now() - this.pointerDown.time;
-    const dx = event.global.x - this.pointerDown.x;
-    const dy = event.global.y - this.pointerDown.y;
-    this.pointerDown = null;
-    if (elapsed > 450 || Math.hypot(dx, dy) > 12) return;
+  private handleCanvasTap(globalX: number, globalY: number): void {
+    if (!this.interactionEnabled || !this.pointerGesture) return;
+    const gesture = this.pointerGesture;
+    this.pointerGesture = null;
+    if (gesture.dragged) return;
+    if (performance.now() - gesture.time > 450) return;
 
-    const world = this.cameraController.screenToWorld(event.global.x, event.global.y);
+    const world = this.cameraController.screenToWorld(globalX, globalY);
     const axial = axialFromWorld(world.x, world.y, HEX_RADIUS);
     const key = axialKey(axial);
 
@@ -517,12 +578,97 @@ export class BoardRenderer {
     }
     if (this.tiles.has(key)) {
       this.options.onTileTap(axial.q, axial.r);
+      return;
     }
-  };
+    this.options.onEmptyTap();
+  }
 
   spawnPlacementParticles(q: number, r: number, color: number): void {
     const center = getHexCenter(q, r);
     this.particleRenderer.emit(center.x, center.y, color);
     this.invalidate();
   }
+
+  animatePlacement(
+    q: number,
+    r: number,
+    color: number,
+    fromScreen?: { x: number; y: number },
+  ): void {
+    const from = fromScreen ?? {
+      x: this.screenWidth * 0.5,
+      y: this.screenHeight - 96,
+    };
+    const center = getHexCenter(q, r);
+    const to = this.cameraController.worldToScreen(center.x, center.y);
+    this.placementFx = {
+      q,
+      r,
+      color,
+      startTime: performance.now(),
+      fromX: from.x,
+      fromY: from.y,
+      toX: to.x,
+      toY: to.y,
+    };
+    this.invalidate();
+  }
+
+  private updatePlacementFx(now: number): boolean {
+    if (!this.placementFx) return false;
+
+    const fx = this.placementFx;
+    const elapsed = now - fx.startTime;
+    const flyDuration = PLACEMENT_ANIMATION_MS;
+    const scaleDuration = 180;
+    const total = flyDuration + scaleDuration;
+
+    if (elapsed >= total) {
+      this.placementFx = null;
+      this.fxGraphics.clear();
+      this.scaleGraphics.clear();
+      return false;
+    }
+
+    const hexColor = formatHex(fx.color);
+    this.fxGraphics.clear();
+    this.scaleGraphics.clear();
+
+    if (elapsed <= flyDuration) {
+      const t = easeOutCubic(elapsed / flyDuration);
+      const ctrlX = (fx.fromX + fx.toX) * 0.5;
+      const ctrlY = Math.min(fx.fromY, fx.toY) - 56;
+      const x = quadBezier(fx.fromX, ctrlX, fx.toX, t);
+      const y = quadBezier(fx.fromY, ctrlY, fx.toY, t);
+      const radius = 10 + (1 - t) * 6;
+      this.fxGraphics.circle(x, y, radius);
+      this.fxGraphics.fill({ color: hexColor, alpha: 0.95 });
+    }
+
+    const scaleElapsed = Math.max(0, elapsed - flyDuration * 0.55);
+    if (scaleElapsed > 0) {
+      const scaleT = Math.min(1, scaleElapsed / scaleDuration);
+      let scale: number;
+      if (scaleT < 0.65) {
+        scale = 0.2 + (scaleT / 0.65) * 0.88;
+      } else {
+        scale = 1.08 - ((scaleT - 0.65) / 0.35) * 0.08;
+      }
+      const center = getHexCenter(fx.q, fx.r);
+      const corners = hexCorners(center.x, center.y, HEX_RADIUS * scale);
+      this.scaleGraphics.poly(corners.flatMap((c) => [c.x, c.y]));
+      this.scaleGraphics.fill({ color: hexColor, alpha: 0.92 });
+    }
+
+    return true;
+  }
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3;
+}
+
+function quadBezier(p0: number, p1: number, p2: number, t: number): number {
+  const inv = 1 - t;
+  return inv * inv * p0 + 2 * inv * t * p1 + t * t * p2;
 }

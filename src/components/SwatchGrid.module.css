@@ -40,3 +40,27 @@
   font-size: var(--kulur-text-sm, 0.8125rem);
   color: var(--kulur-fg-muted, #9ca3af);
 }
+
+.hexLabel {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.detailBar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--kulur-border, rgba(255, 255, 255, 0.08));
+}
+
+.detailBar button {
+  min-height: 44px;
+  padding: 0.375rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--kulur-border, rgba(255, 255, 255, 0.1));
+  background: transparent;
+  color: var(--kulur-fg-primary, #f4f4f5);
+  cursor: pointer;
+}

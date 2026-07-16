@@ -4,6 +4,7 @@ import type { DieStyleId } from '../game/types';
 import { randomInt } from '../game/random';
 import { useGameStore } from '../state/gameStore';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+import { audioEngine } from '../audio/AudioEngine';
 import styles from './RollDie.module.css';
 
 const FACE_ROTATIONS = [
@@ -35,6 +36,7 @@ export function RollDie({ className }: RollDieProps) {
   const pendingRoll = useGameStore((s) => s.pendingRoll);
   const dieStyle = useGameStore((s) => s.settings.dieStyle);
   const roll = useGameStore((s) => s.roll);
+  const rollEmphasis = useGameStore((s) => s.rollEmphasis);
   const reducedMotion = useReducedMotion();
 
   const [spinning, setSpinning] = useState(false);
@@ -62,6 +64,7 @@ export function RollDie({ className }: RollDieProps) {
   const handleRoll = useCallback(async () => {
     if (!canRoll || spinning) return;
     clearSpinTimeout();
+    void audioEngine.unlock();
 
     if (reducedMotion) {
       await roll();
@@ -83,6 +86,13 @@ export function RollDie({ className }: RollDieProps) {
   }, [canRoll, spinning, reducedMotion, roll, clearSpinTimeout]);
 
   useEffect(() => () => clearSpinTimeout(), [clearSpinTimeout]);
+
+  useEffect(() => {
+    if (interactionState === 'idle' || interactionState === 'pendingPlacement') {
+      setSpinning(false);
+      clearSpinTimeout();
+    }
+  }, [interactionState, clearSpinTimeout]);
 
   useEffect(() => {
     if (interactionState !== 'rolling') return;
@@ -112,6 +122,7 @@ export function RollDie({ className }: RollDieProps) {
         styleClass,
         spinning ? styles.spinning : '',
         isPending ? styles.pending : '',
+        rollEmphasis && canRoll ? styles.emphasis : '',
         className ?? '',
       ]
         .filter(Boolean)

@@ -9,6 +9,7 @@ import type {
 import { getDatabase, chunkKey } from './database';
 import { DEFAULT_SETTINGS } from '../game/constants';
 import { settingsSchema } from './schema';
+import { cloneMetaForStorage, hydrateMeta } from './metaSerialize';
 
 export { chunkKey };
 
@@ -26,13 +27,14 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 export async function loadMeta(): Promise<WorldMeta | null> {
   const db = await getDatabase();
-  return (await db.get('meta', 'world')) ?? null;
+  const raw = await db.get('meta', 'world');
+  return raw ? hydrateMeta(raw) : null;
 }
 
 export async function saveMeta(meta: WorldMeta): Promise<void> {
   const db = await getDatabase();
   meta.updatedAt = Date.now();
-  await db.put('meta', meta, 'world');
+  await db.put('meta', cloneMetaForStorage(meta), 'world');
 }
 
 export async function loadAllTiles(_worldId: string): Promise<Map<string, TileRecord>> {
@@ -107,6 +109,31 @@ export async function saveUndo(snapshot: UndoSnapshot | null): Promise<void> {
   else await db.delete('undo', 'current');
 }
 
+export async function persistUndoAtomic(
+  meta: WorldMeta,
+  snapshot: UndoSnapshot,
+  exactPages: Map<number, Uint8Array>,
+  rgbData: Uint8Array,
+): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction(
+    ['meta', 'chunks', 'discoveries', 'exactBitsetPages', 'rgbCellBitset', 'undo'],
+    'readwrite',
+  );
+  meta.updatedAt = Date.now();
+  await tx.objectStore('meta').put(cloneMetaForStorage(meta), 'world');
+  await tx.objectStore('chunks').delete(chunkKey(meta.worldId, snapshot.tile.q, snapshot.tile.r));
+  for (const packed of snapshot.discoveriesAdded) {
+    await tx.objectStore('discoveries').delete(packed);
+  }
+  for (const [idx, page] of exactPages) {
+    await tx.objectStore('exactBitsetPages').put(page, idx);
+  }
+  await tx.objectStore('rgbCellBitset').put(rgbData, 'main');
+  await tx.objectStore('undo').delete('current');
+  await tx.done;
+}
+
 export async function persistPlacementAtomic(
   meta: WorldMeta,
   tile: TileRecord,
@@ -121,7 +148,7 @@ export async function persistPlacementAtomic(
     'readwrite',
   );
   meta.updatedAt = Date.now();
-  await tx.objectStore('meta').put(meta, 'world');
+  await tx.objectStore('meta').put(cloneMetaForStorage(meta), 'world');
   await tx.objectStore('chunks').put(tile, chunkKey(meta.worldId, tile.q, tile.r));
   for (const d of discoveries) {
     await tx.objectStore('discoveries').put(d, d.packed);
@@ -171,7 +198,7 @@ export async function replaceWorldData(
   await tx.objectStore('discoveries').clear();
   await tx.objectStore('exactBitsetPages').clear();
   await tx.objectStore('undo').clear();
-  await tx.objectStore('meta').put(meta, 'world');
+  await tx.objectStore('meta').put(cloneMetaForStorage(meta), 'world');
   await tx.objectStore('settings').put(settings, 'app');
   for (const tile of tiles) {
     await tx.objectStore('chunks').put(tile, chunkKey(meta.worldId, tile.q, tile.r));

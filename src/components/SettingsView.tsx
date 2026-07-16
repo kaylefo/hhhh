@@ -3,6 +3,7 @@ import { useGameStore } from '../state/gameStore';
 import { ConfirmDialog } from './ConfirmDialog';
 import { DieStylePicker } from './DieStylePicker';
 import { MaterialPicker } from './MaterialPicker';
+import { ShareViewSheet } from './ShareViewSheet';
 import styles from './SettingsView.module.css';
 
 type SettingsViewProps = {
@@ -23,6 +24,7 @@ export function SettingsView({ className }: SettingsViewProps) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [eraseOpen, setEraseOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const unlockedMaterials = meta?.unlockedMaterials ?? ['soft'];
   const unlockedDieStyles = meta?.unlockedDieStyles ?? ['cube'];
@@ -46,45 +48,20 @@ export function SettingsView({ className }: SettingsViewProps) {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Experience</h2>
-        <ToggleRow
-          label="Sound"
-          checked={settings.sound}
-          onChange={(sound) => void updateSettings({ sound })}
-        />
-        <ToggleRow
-          label="Haptics"
-          checked={settings.haptics}
-          onChange={(haptics) => void updateSettings({ haptics })}
-        />
-        <ToggleRow
-          label="High contrast"
-          checked={settings.highContrast}
-          onChange={(highContrast) => void updateSettings({ highContrast })}
-        />
-        <ToggleRow
-          label="Color patterns"
-          checked={settings.colorPatterns}
-          onChange={(colorPatterns) => void updateSettings({ colorPatterns })}
-        />
-        <TriStateRow
-          label="Reduced motion"
-          value={settings.reducedMotion}
-          onChange={(reducedMotion) => void updateSettings({ reducedMotion })}
-        />
+        <ToggleRow label="Sound" checked={settings.sound} onChange={(sound) => void updateSettings({ sound })} />
+        <ToggleRow label="Haptics" checked={settings.haptics} onChange={(haptics) => void updateSettings({ haptics })} />
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Board material</h2>
+        <h2 className={styles.sectionTitle}>Appearance</h2>
+        <h3 className={styles.subTitle}>Material</h3>
         <MaterialPicker
           value={settings.material}
           unlocked={unlockedMaterials}
           exactColorCount={exactColorCount}
           onChange={(material) => void updateSettings({ material })}
         />
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Die style</h2>
+        <h3 className={styles.subTitle}>Die style</h3>
         <DieStylePicker
           value={settings.dieStyle}
           unlocked={unlockedDieStyles}
@@ -94,18 +71,49 @@ export function SettingsView({ className }: SettingsViewProps) {
       </section>
 
       <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Accessibility</h2>
+        <TriStateRow
+          label="Reduced motion"
+          value={settings.reducedMotion}
+          onChange={(reducedMotion) => void updateSettings({ reducedMotion })}
+        />
+        <ToggleRow
+          label="Color patterns"
+          checked={settings.colorPatterns}
+          onChange={(colorPatterns) => void updateSettings({ colorPatterns })}
+        />
+        <ToggleRow
+          label="Higher contrast"
+          checked={settings.highContrast}
+          onChange={(highContrast) => void updateSettings({ highContrast })}
+        />
+      </section>
+
+      <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Data</h2>
         <div className={styles.actionRow}>
           <button type="button" className={styles.actionButton} onClick={() => void exportData()}>
-            Export world
+            Export Kulur
           </button>
           <button type="button" className={styles.actionButton} onClick={handleImportClick}>
-            Import world
+            Import Kulur
+          </button>
+          <button type="button" className={styles.actionButton} onClick={() => setShareOpen(true)}>
+            Share current view
+          </button>
+          <button type="button" className={styles.actionButton} onClick={centerOrigin}>
+            Center origin
+          </button>
+          <button type="button" className={styles.actionButton} onClick={showIntroduction}>
+            View introduction
+          </button>
+          <button type="button" className={styles.destructiveButton} onClick={() => setEraseOpen(true)}>
+            Erase board
           </button>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".kulur,application/octet-stream"
+            accept=".kulur,application/x-kulur"
             className={styles.hiddenInput}
             onChange={(e) => void handleImportFile(e)}
           />
@@ -113,24 +121,21 @@ export function SettingsView({ className }: SettingsViewProps) {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Board</h2>
-        <div className={styles.actionRow}>
-          <button type="button" className={styles.actionButton} onClick={centerOrigin}>
-            Center origin
-          </button>
-          <button type="button" className={styles.actionButton} onClick={showIntroduction}>
-            Show introduction
-          </button>
-          <button type="button" className={styles.destructiveButton} onClick={() => setEraseOpen(true)}>
-            Erase board
-          </button>
-        </div>
+        <h2 className={styles.sectionTitle}>About</h2>
+        <p className={styles.aboutText}>
+          Kulur stores exact sRGB colors. Mixing is performed in OKLab because equal numerical changes more closely
+          reflect perceived color changes than direct RGB averaging. Shared edges are 50/50 mixes. Completed
+          three-tile corners are equal three-color mixes. RGB-map progress uses 32 levels per red, green, and blue
+          channel.
+        </p>
       </section>
+
+      <ShareViewSheet open={shareOpen} onClose={() => setShareOpen(false)} />
 
       <ConfirmDialog
         open={eraseOpen}
         title="Erase board?"
-        message="This permanently removes all tiles, discoveries, and progress from your current world."
+        message="This permanently removes all tiles, discoveries, and progress from your device."
         confirmLabel="Erase"
         destructive
         requireTypedConfirmation="ERASE KULUR"
@@ -156,7 +161,7 @@ function ToggleRow({
   return (
     <label className={styles.toggleRow}>
       <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
     </label>
   );
 }

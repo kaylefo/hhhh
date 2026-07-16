@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { rgbCellProgressPercent } from '../game/color/formatting';
 import { EXACT_COLOR_UNIVERSE, RGB_CELL_COUNT } from '../game/constants';
 import { useGameStore } from '../state/gameStore';
+import { GamutHexSearch } from './GamutHexSearch';
 import { GamutAtlas } from './GamutAtlas';
 import { SwatchGrid } from './SwatchGrid';
 import styles from './GamutView.module.css';
@@ -19,7 +20,6 @@ export function GamutView({ className }: GamutViewProps) {
   const setView = useGameStore((s) => s.setView);
   const [tab, setTab] = useState<GamutTab>('atlas');
 
-  const exactPct = ((exactColorCount / EXACT_COLOR_UNIVERSE) * 100).toFixed(4);
   const rgbPct = rgbCellProgressPercent(rgbCellCount, RGB_CELL_COUNT);
 
   return (
@@ -33,21 +33,19 @@ export function GamutView({ className }: GamutViewProps) {
           <div className={styles.stat}>
             <span className={styles.statLabel}>Exact</span>
             <span className={styles.statValue}>
-              {exactColorCount.toLocaleString()} ({exactPct}%)
+              {exactColorCount.toLocaleString()} / {EXACT_COLOR_UNIVERSE.toLocaleString()}
             </span>
           </div>
           <div className={styles.stat}>
-            <span className={styles.statLabel}>RGB cells</span>
+            <span className={styles.statLabel}>RGB map</span>
             <span className={styles.statValue}>
-              {rgbCellCount.toLocaleString()} ({rgbPct}%)
+              {rgbCellCount.toLocaleString()} / {RGB_CELL_COUNT.toLocaleString()} ({rgbPct}%)
             </span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statLabel}>Discoveries</span>
-            <span className={styles.statValue}>{discoveries.length.toLocaleString()}</span>
           </div>
         </div>
       </header>
+
+      <GamutHexSearch discoveries={discoveries} />
 
       <div className={styles.tabs} role="tablist" aria-label="Gamut views">
         <button

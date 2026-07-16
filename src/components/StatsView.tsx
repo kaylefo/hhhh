@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { formatPlayTime } from '../game/board/statistics';
+import { formatPlayTime, computeBoardStatistics } from '../game/board/statistics';
 import { rgbCellProgressPercent } from '../game/color/formatting';
 import { hueBinCenter } from '../game/color/harmony';
 import { HUE_BIN_COUNT, RGB_CELL_COUNT } from '../game/constants';
@@ -14,10 +14,18 @@ export function StatsView({ className }: StatsViewProps) {
   const meta = useGameStore((s) => s.meta);
   const exactColorCount = useGameStore((s) => s.exactColorCount);
   const rgbCellCount = useGameStore((s) => s.rgbCellCount);
+  const tiles = useGameStore((s) => s.tiles);
+  const settings = useGameStore((s) => s.settings);
   const setView = useGameStore((s) => s.setView);
 
   const stats = meta?.statistics;
   const histogram = meta?.hueHistogram;
+  const boardStats = useMemo(() => {
+    if (!stats) {
+      return { avgNeighbors: 0, width: 0, height: 0, furthestDistance: 0 };
+    }
+    return computeBoardStatistics(tiles, stats);
+  }, [tiles, stats]);
 
   const histogramBars = useMemo(() => {
     if (!histogram) return [];
@@ -40,7 +48,7 @@ export function StatsView({ className }: StatsViewProps) {
           <button type="button" className={styles.backButton} onClick={() => setView('board')} aria-label="Back to board">
             ← Board
           </button>
-          <h1 className={styles.title}>Statistics</h1>
+          <h1 className={styles.title}>Stats</h1>
         </header>
         <p className={styles.empty}>Statistics will appear once your world is initialized.</p>
       </div>
@@ -53,7 +61,7 @@ export function StatsView({ className }: StatsViewProps) {
         <button type="button" className={styles.backButton} onClick={() => setView('board')} aria-label="Back to board">
           ← Board
         </button>
-        <h1 className={styles.title}>Statistics</h1>
+        <h1 className={styles.title}>Stats</h1>
       </header>
 
       <section className={styles.grid} aria-label="World statistics">
@@ -68,6 +76,12 @@ export function StatsView({ className }: StatsViewProps) {
         <StatCard label="Completed vertices" value={stats.completedVertices.toLocaleString()} />
         <StatCard label="Palette anchors" value={stats.paletteAnchors.toLocaleString()} />
         <StatCard label="Largest discovery" value={stats.largestPlacementDiscovery.toLocaleString()} />
+        <StatCard label="Avg neighbors" value={boardStats.avgNeighbors.toFixed(2)} />
+        <StatCard label="Board width" value={boardStats.width.toLocaleString()} />
+        <StatCard label="Board height" value={boardStats.height.toLocaleString()} />
+        <StatCard label="Furthest from origin" value={boardStats.furthestDistance.toLocaleString()} />
+        <StatCard label="Current material" value={settings.material} />
+        <StatCard label="Current die style" value={settings.dieStyle} />
         <StatCard label="Play time" value={formatPlayTime(stats.totalPlayTimeMs)} />
       </section>
 

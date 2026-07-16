@@ -41,6 +41,19 @@
   color: var(--kulur-fg-muted, #9ca3af);
 }
 
+.subTitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--kulur-fg-muted, #9ca3af);
+}
+
+.aboutText {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--kulur-fg-muted, #9ca3af);
+}
+
 .toggleRow {
   display: flex;
   align-items: center;
